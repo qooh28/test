@@ -154,6 +154,29 @@ button { cursor: pointer; -webkit-tap-highlight-color: transparent; }
   background: var(--surface);
   color: var(--ink);
 }
+.modes {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+}
+.modes button {
+  height: 38px;
+  border: 0;
+  border-radius: 9px;
+  background: none;
+  color: var(--muted);
+  font-size: var(--fs-sm);
+  font-weight: 700;
+}
+.modes button[aria-selected="true"] {
+  background: var(--ink);
+  color: var(--bg);
+}
 .search {
   grid-column: 1 / -1;
   position: relative;
@@ -234,9 +257,11 @@ button { cursor: pointer; -webkit-tap-highlight-color: transparent; }
 
 /* ---------- main ---------- */
 .main {
+  padding-block: 14px calc(112px + env(safe-area-inset-bottom, 0px));
+}
+.view {
   display: grid;
   gap: 12px;
-  padding-block: 14px calc(112px + env(safe-area-inset-bottom, 0px));
 }
 .notice {
   display: flex;
@@ -411,6 +436,113 @@ button { cursor: pointer; -webkit-tap-highlight-color: transparent; }
   color: var(--ink);
 }
 .plus:active, .minus:active { transform: scale(0.94); }
+
+.where {
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--fs-xs);
+  overflow-wrap: anywhere;
+}
+
+/* ---------- 作品をさがす ---------- */
+.works {
+  display: grid;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  overflow: hidden;
+}
+.work {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border-top: 1px solid var(--line);
+}
+.work:first-child { border-top: 0; }
+.work-main {
+  display: grid;
+  flex: 1;
+  gap: 2px;
+  min-width: 0;
+}
+.work-title {
+  margin: 0;
+  font-size: var(--fs-md);
+  font-weight: 700;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+.work-meta {
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--fs-xs);
+  font-variant-numeric: tabular-nums;
+}
+.svc-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 4px 0 0;
+}
+.svc {
+  padding: 0 6px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.7;
+  white-space: nowrap;
+}
+.svc.on { border-color: var(--ink); color: var(--ink); font-weight: 700; }
+.add-btn {
+  flex: none;
+  height: 36px;
+  padding: 0 12px;
+  border: 1px solid var(--accent);
+  border-radius: 999px;
+  background: none;
+  color: var(--accent);
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  white-space: nowrap;
+}
+.added {
+  flex: none;
+  color: var(--done);
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  white-space: nowrap;
+}
+.more { justify-self: center; }
+.credit {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: var(--fs-xs);
+  max-width: 48em;
+}
+.credit a { color: inherit; }
+
+/* タイトル入力中の候補 */
+.suggest {
+  display: grid;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+  overflow: hidden;
+}
+.suggest button {
+  display: grid;
+  gap: 1px;
+  padding: 8px 12px;
+  border: 0;
+  border-top: 1px solid var(--line);
+  background: none;
+  text-align: left;
+}
+.suggest button:first-child { border-top: 0; }
+.suggest .s-title { font-weight: 700; font-size: var(--fs-sm); overflow-wrap: anywhere; }
+.suggest .s-meta { color: var(--muted); font-size: var(--fs-xs); }
 
 /* 1話 = 1コマ */
 .frames {
