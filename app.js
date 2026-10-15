@@ -20,7 +20,8 @@
     updated: (a, b) => b.updatedAt - a.updatedAt,
     season: (a, b) => seasonRank(b) - seasonRank(a) || b.updatedAt - a.updatedAt,
     rating: (a, b) => b.rating - a.rating || b.updatedAt - a.updatedAt,
-    title: (a, b) => collator.compare(a.title, b.title),
+    // 読みがながあれば読みがなの、あいうえお順。手入力の作品など読みがながなければ題名の文字で並べる
+    title: (a, b) => collator.compare(a.kana || a.title, b.kana || b.title),
   };
   // 作品一覧は人気順で読み込むので、人気順は並べ替え不要。評価順は自分の記録の星を使うので renderFind で並べる
   const FIND_SORTS = {
@@ -179,6 +180,7 @@
       cour: COUR[raw.cour] ? raw.cour : null,
       rating,
       note: String(raw.note ?? '').slice(0, 5000),
+      kana: String(raw.kana ?? '').slice(0, 200), // 読みがな（タイトル順に使う）
       sourceId: toSourceId(raw.sourceId),
       sample: raw.sample === true,
       createdAt: Number(raw.createdAt) || now,
@@ -282,10 +284,33 @@
         catalogPromise = null; // 次に開いたときにもう一度読み込む
       })
       .then(() => {
-        render({ keepOrder: true });
+        // 読みがなが入ったらタイトル順の並びが変わるので並べ直す。それ以外は並びを動かさない
+        const filled = fillKana();
+        render({ keepOrder: !(filled && state.sort === 'title') });
         if (els.editor.open) renderSuggest();
       });
     return catalogPromise;
+  }
+
+  // 読みがなのない記録に、作品一覧の読みがなを入れる（作品を選んで登録した記録か、題名が一致する記録）
+  function fillKana() {
+    if (catalog.status !== 'ready') return false;
+    let filled = false;
+    for (const item of state.items) {
+      if (item.kana) continue;
+      const work = workFor(item);
+      if (work && work.kana) {
+        item.kana = work.kana;
+        filled = true;
+      }
+    }
+    if (filled) save();
+    return filled;
+  }
+
+  // タイトル順で並べるのに、読みがなのない記録があれば作品一覧を読み込む
+  function needKana() {
+    return state.mode === 'mine' && state.sort === 'title' && state.items.some((it) => !it.kana);
   }
 
   function prepareCatalog(data) {
@@ -598,7 +623,7 @@
   }
 
   function prefillFromWork(work, status = 'want') {
-    return { title: work.title, total: work.total, year: work.year, cour: work.cour, sourceId: work.id, status };
+    return { title: work.title, kana: work.kana, total: work.total, year: work.year, cour: work.cour, sourceId: work.id, status };
   }
 
   /* ---------- toast ---------- */
@@ -703,6 +728,7 @@
     state.sort = SORTS[els.sort.value] ? els.sort.value : 'updated';
     savePrefs();
     render();
+    if (needKana()) loadCatalog();
   });
 
   /* ---------- mode switch & find actions ---------- */
@@ -798,7 +824,7 @@
     f.title.value = work.title;
     if (work.total) f.total.value = String(work.total);
     setEditorSeason(work);
-    state.picked = work.sourceId ? { id: work.sourceId, title: work.title } : null;
+    state.picked = work.sourceId ? { id: work.sourceId, title: work.title, kana: work.kana || '' } : null;
   }
 
   function openEditor(id = null, prefill = null) {
@@ -915,7 +941,12 @@
     if (total && watched > total) watched = total;
     const existing = state.editingId ? findItem(state.editingId) : null;
     let sourceId = existing ? existing.sourceId : null;
-    if (state.picked && title === state.picked.title) sourceId = state.picked.id;
+    // 読みがなは、選んだ作品のもの。編集で題名を変えたら、古い読みがなは捨てる（作品一覧に同じ題名があれば後で入る）
+    let kana = existing && existing.title === title ? existing.kana : '';
+    if (state.picked && title === state.picked.title) {
+      sourceId = state.picked.id;
+      kana = state.picked.kana;
+    }
     const data = {
       title: title.slice(0, 200),
       status: currentStatus(),
@@ -925,6 +956,7 @@
       cour: state.season ? state.season.cour : null,
       rating: state.rating,
       note: f.note.value.trim().slice(0, 5000),
+      kana,
       sourceId,
       sample: false,
     };
@@ -948,6 +980,7 @@
     }
 
     els.editor.close();
+    fillKana();
     commit();
     toast(message);
   });
@@ -1066,6 +1099,7 @@
   /* ---------- start ---------- */
   load();
   setMode(state.mode);
+  if (needKana()) loadCatalog();
 
   try {
     if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
