@@ -3,13 +3,19 @@
 
 使い方:
   python3 scripts/build_catalog.py             # catalog.json を作る
-  python3 scripts/build_catalog.py --discover  # 配信チャンネル名と作品数を表示するだけ
+  python3 scripts/build_catalog.py --discover  # Annict にある配信チャンネルを表示するだけ
+
+しくみ:
+  1. 人気の作品を順に見て、配信サービス（チャンネル）の一覧を集める
+  2. 配信サービスごとに、そこで配信された作品（Annict の「番組」）を全部たどる
+  3. 作品ごとに、配信されたサービスをまとめて catalog.json に書く
 
 Annict のアクセストークンは、環境変数 ANNICT_TOKEN か、
 Claude Code の環境の Network secrets（api.annict.com 宛ての Authorization ヘッダー）で渡す。
 """
 
 import argparse
+import base64
 import datetime
 import json
 import os
@@ -21,61 +27,65 @@ import urllib.error
 import urllib.request
 
 API = "https://api.annict.com/graphql"
-PAGE_SIZE = 50
-WAIT_SECONDS = 1.0  # Annict に負担をかけないよう、1回ごとに少し待つ
+WAIT_SECONDS = 0.3  # Annict に負担をかけないよう、1回ごとに少し待つ
+SCAN_PAGES = 120  # 配信チャンネルを探すときに見る作品数（×50）
 
-# 配信サービス（アプリでの ID, 表示名, Annict のチャンネル名に合う正規表現）。上から順に判定する
+# 配信サービス（アプリでの ID, 表示名, Annict のチャンネル名に合う正規表現）。上から順に判定し、この順でアプリに並ぶ。
+# 無料の動画サイト（YouTube、ニコニコ生放送）と海外向け（Crunchyroll）は入れない。
 SERVICES = [
     ("unext", "U-NEXT", r"^u-?next"),
     ("netflix", "Netflix", r"^netflix"),
-    ("danime", "dアニメストア", r"^dアニメストア$"),
     ("prime", "Prime Video", r"^(amazon ?)?(prime ?video|プライム・?ビデオ)"),
+    ("danime", "dアニメストア", r"^dアニメストア$"),
     ("abema", "ABEMA", r"^abema"),
     ("dmm", "DMM TV", r"^dmm ?tv"),
     ("hulu", "Hulu", r"^hulu"),
     ("disney", "Disney+", r"^(disney ?\+|disney ?plus|ディズニー ?プラス|ディズニー\+)"),
-    ("lemino", "Lemino", r"^(lemino|dtv)$"),
     ("fod", "FOD", r"^fod"),
+    ("lemino", "Lemino", r"^(lemino|dtv)$"),
     ("telasa", "TELASA", r"^(telasa|ビデオパス)"),
     ("bandai", "バンダイチャンネル", r"^バンダイチャンネル"),
     ("animehodai", "アニメ放題", r"^アニメ放題"),
-    ("niconico", "ニコニコ", r"^(niconico|ニコニコ)"),
+    ("danimenico", "dアニメ ニコニコ支店", r"^dアニメストア ?ニコニコ支店"),
+    ("nicoch", "ニコニコチャンネル", r"^ニコニコチャンネル"),
 ]
+STREAMING_GROUPS = {"動画サービス", "ABEMA"}
 
 MEDIA = {"TV": "tv", "MOVIE": "movie", "OVA": "ova", "WEB": "web", "OTHER": "other"}
 SEASON = {"WINTER": "winter", "SPRING": "spring", "SUMMER": "summer", "AUTUMN": "fall"}
 
-QUERY = """
+SCAN_QUERY = """
 query ($after: String) {
-  searchWorks(orderBy: { field: WATCHERS_COUNT, direction: DESC }, first: %d, after: $after) {
+  searchWorks(orderBy: { field: WATCHERS_COUNT, direction: DESC }, first: 50, after: $after) {
     pageInfo { hasNextPage endCursor }
     nodes {
       annictId
-      title
-      titleKana
-      titleEn
-      media
-      seasonName
-      seasonYear
-      episodesCount
-      watchersCount
-      programs(first: 100) {
-        pageInfo { hasNextPage endCursor }
-        nodes { channel { name } }
-      }
+      programs(first: 100) { nodes { channel { annictId name channelGroup { name } } } }
     }
   }
 }
-""" % PAGE_SIZE
+"""
 
-# 放送局が多い長寿作品は、配信チャンネルが2ページ目以降に入ることがあるので続きを取る
-MORE_PROGRAMS_QUERY = """
-query ($ids: [Int!], $after: String) {
-  searchWorks(annictIds: $ids, first: 1) {
+# Annict にはチャンネルを直接引く入口がないので、そのチャンネルの番組を持つ作品からたどる
+CHANNEL_QUERY = """
+query ($work: Int!, $at: String, $after: String) {
+  searchWorks(annictIds: [$work]) {
     nodes {
-      programs(first: 100, after: $after) {
-        pageInfo { hasNextPage endCursor }
-        nodes { channel { name } }
+      programs(first: 1, after: $at) {
+        nodes {
+          channel {
+            annictId
+            name
+            programs(first: 100, after: $after) {
+              pageInfo { hasNextPage endCursor }
+              nodes {
+                work {
+                  annictId title titleKana titleEn media seasonName seasonYear episodesCount watchersCount
+                }
+              }
+            }
+          }
+        }
       }
     }
   }
@@ -112,96 +122,95 @@ def post(query, variables):
     raise RuntimeError("Annict への問い合わせが続けて失敗しました")
 
 
-def complete_programs(work):
-    programs = work["programs"]
-    while programs["pageInfo"]["hasNextPage"]:
-        time.sleep(WAIT_SECONDS)
-        data = post(MORE_PROGRAMS_QUERY, {"ids": [work["annictId"]], "after": programs["pageInfo"]["endCursor"]})
-        more = data["searchWorks"]["nodes"][0]["programs"]
-        programs["nodes"].extend(more["nodes"])
-        programs["pageInfo"] = more["pageInfo"]
-
-
-def fetch_all_works(cache_path=None, limit=0):
-    """全作品を人気順に取る。cache_path を渡すと1ページごとに保存し、途中で止まっても続きから再開する。"""
-    works = []
-    after = None
-    done = False
-    if cache_path and os.path.exists(cache_path):
-        with open(cache_path, encoding="utf-8") as fp:
-            for line in fp:
-                page = json.loads(line)
-                works.extend(page["nodes"])
-                after, done = page["next"], not page["hasNext"]
-        print(f"保存済みの{len(works)}作品から再開します", file=sys.stderr)
-
-    page_no = 0
-    while not done and not (limit and len(works) >= limit):
-        page_no += 1
-        data = post(QUERY, {"after": after})["searchWorks"]
-        for work in data["nodes"]:
-            complete_programs(work)
-        works.extend(data["nodes"])
-        after, done = data["pageInfo"]["endCursor"], not data["pageInfo"]["hasNextPage"]
-        if cache_path:
-            with open(cache_path, "a", encoding="utf-8") as fp:
-                fp.write(json.dumps({"next": after, "hasNext": not done, "nodes": data["nodes"]}, ensure_ascii=False) + "\n")
-        print(f"\r{len(works)}作品まで取得", end="", file=sys.stderr, flush=True)
-        time.sleep(WAIT_SECONDS)
-    print(file=sys.stderr)
-    return works[:limit] if limit else works
-
-
-def norm(name):
-    return unicodedata.normalize("NFKC", name).strip().lower()
+def offset_cursor(n):
+    # Annict の番組一覧のカーソルは「何件目か」を base64 にしたもの
+    return base64.b64encode(str(n).encode()).decode() if n else None
 
 
 def service_of(channel_name):
-    name = norm(channel_name)
+    name = unicodedata.normalize("NFKC", channel_name).strip().lower()
     for index, (_, _, pattern) in enumerate(SERVICES):
         if re.search(pattern, name):
             return index
     return None
 
 
-def discover(works):
-    counts = {}
-    for work in works:
-        for program in work["programs"]["nodes"]:
-            name = program["channel"]["name"]
-            counts[name] = counts.get(name, 0) + 1
-    for name, count in sorted(counts.items(), key=lambda kv: -kv[1]):
-        index = service_of(name)
-        label = SERVICES[index][1] if index is not None else "-"
-        print(f"{count:6d}  {label:14s}  {name}")
+def discover_channels():
+    """人気作品の番組から配信チャンネルを集める。チャンネルごとに、たどる入口（作品 ID, 番組の位置）も覚える。"""
+    channels = {}
+    after = None
+    for page in range(SCAN_PAGES):
+        data = post(SCAN_QUERY, {"after": after})["searchWorks"]
+        for work in data["nodes"]:
+            for index, program in enumerate(work["programs"]["nodes"]):
+                channel = program["channel"]
+                if channel["channelGroup"]["name"] not in STREAMING_GROUPS:
+                    continue
+                entry = channels.setdefault(channel["annictId"], {"name": channel["name"], "ref": (work["annictId"], index), "seen": 0})
+                entry["seen"] += 1
+        print(f"\r配信チャンネルを探しています（{(page + 1) * 50}作品）", end="", file=sys.stderr, flush=True)
+        if not data["pageInfo"]["hasNextPage"]:
+            break
+        after = data["pageInfo"]["endCursor"]
+        time.sleep(WAIT_SECONDS)
+    print(file=sys.stderr)
+    return channels
 
 
-def build(works, out_path, all_works=False):
-    entries = []
-    for work in works:
-        services = sorted({i for p in work["programs"]["nodes"] if (i := service_of(p["channel"]["name"])) is not None})
-        if not work.get("title") or (not services and not all_works):
-            continue
-        entry = {"id": work["annictId"], "t": work["title"].strip()}
-        if work.get("titleKana"):
-            entry["k"] = work["titleKana"].strip()
-        if work.get("titleEn"):
-            entry["e"] = work["titleEn"].strip()
-        if work.get("seasonYear"):
-            entry["y"] = work["seasonYear"]
-        if work.get("seasonName") in SEASON:
-            entry["c"] = SEASON[work["seasonName"]]
-        episodes = work.get("episodesCount") or 0
-        if work.get("media") == "MOVIE" and not episodes:
-            episodes = 1
-        if episodes:
-            entry["n"] = episodes
-        if work.get("media") in MEDIA:
-            entry["m"] = MEDIA[work["media"]]
-        entry["s"] = services
-        entry["p"] = work.get("watchersCount") or 0
-        entries.append(entry)
+def fetch_channel_works(ref):
+    work_id, index = ref
+    works = {}
+    offset = 0
+    while True:
+        data = post(CHANNEL_QUERY, {"work": work_id, "at": offset_cursor(index), "after": offset_cursor(offset)})
+        programs = data["searchWorks"]["nodes"][0]["programs"]["nodes"][0]["channel"]["programs"]
+        for program in programs["nodes"]:
+            if program and program.get("work"):
+                works[program["work"]["annictId"]] = program["work"]
+        offset += len(programs["nodes"])
+        if not programs["pageInfo"]["hasNextPage"] or not programs["nodes"]:
+            return list(works.values())
+        time.sleep(WAIT_SECONDS)
 
+
+def to_entry(work, services):
+    entry = {"id": work["annictId"], "t": work["title"].strip()}
+    if work.get("titleKana"):
+        entry["k"] = work["titleKana"].strip()
+    if work.get("titleEn"):
+        entry["e"] = work["titleEn"].strip()
+    if work.get("seasonYear"):
+        entry["y"] = work["seasonYear"]
+    if work.get("seasonName") in SEASON:
+        entry["c"] = SEASON[work["seasonName"]]
+    episodes = work.get("episodesCount") or 0
+    if work.get("media") == "MOVIE" and not episodes:
+        episodes = 1
+    if episodes:
+        entry["n"] = episodes
+    if work.get("media") in MEDIA:
+        entry["m"] = MEDIA[work["media"]]
+    entry["s"] = sorted(services)
+    entry["p"] = work.get("watchersCount") or 0
+    return entry
+
+
+def build(channels, out_path):
+    works = {}
+    services = {}
+    targets = [(cid, c) for cid, c in channels.items() if service_of(c["name"]) is not None]
+    for number, (cid, channel) in enumerate(targets, 1):
+        index = service_of(channel["name"])
+        found = fetch_channel_works(channel["ref"])
+        print(f"[{number}/{len(targets)}] {channel['name']}: {len(found)}作品", file=sys.stderr)
+        for work in found:
+            if not (work.get("title") or "").strip():
+                continue
+            works[work["annictId"]] = work
+            services.setdefault(work["annictId"], set()).add(index)
+
+    entries = [to_entry(works[wid], services[wid]) for wid in works]
+    entries.sort(key=lambda e: -e["p"])
     today = datetime.date.today()
     catalog = {
         "source": "Annict (https://annict.com)",
@@ -211,31 +220,28 @@ def build(works, out_path, all_works=False):
     }
     with open(out_path, "w", encoding="utf-8") as fp:
         json.dump(catalog, fp, ensure_ascii=False, separators=(",", ":"))
-    per_service = {name: 0 for _, name, _ in SERVICES}
-    for entry in entries:
-        for i in entry["s"]:
-            per_service[SERVICES[i][1]] += 1
-    with_service = sum(1 for entry in entries if entry["s"])
-    print(f"{len(entries)}作品（うち配信サービスの記録あり {with_service}作品）を {out_path} に書き出しました", file=sys.stderr)
-    for name, count in per_service.items():
-        print(f"  {name}: {count}", file=sys.stderr)
+
+    print(f"{len(entries)}作品を {out_path} に書き出しました", file=sys.stderr)
+    for index, (_, name, _) in enumerate(SERVICES):
+        count = sum(1 for e in entries if index in e["s"])
+        if count:
+            print(f"  {name}: {count}", file=sys.stderr)
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--discover", action="store_true", help="配信チャンネル名と作品数を表示するだけ")
+    parser.add_argument("--discover", action="store_true", help="Annict にある配信チャンネルを表示するだけ")
     parser.add_argument("--out", default=os.path.join(os.path.dirname(__file__), "..", "catalog.json"))
-    parser.add_argument("--limit", type=int, default=0, help="試しに先頭の何作品だけ取るか（0 = 全部）")
-    parser.add_argument("--cache", help="取得した生データを保存するファイル（JSON Lines）。あれば続きから再開する")
-    parser.add_argument("--all-works", action="store_true", help="配信サービスの記録がない作品も入れる（タイトル検索用）")
     args = parser.parse_args()
 
-    works = fetch_all_works(args.cache, args.limit)
-
+    channels = discover_channels()
     if args.discover:
-        discover(works)
-    else:
-        build(works, os.path.normpath(args.out), args.all_works)
+        for cid, c in sorted(channels.items(), key=lambda kv: -kv[1]["seen"]):
+            index = service_of(c["name"])
+            label = SERVICES[index][1] if index is not None else "（入れない）"
+            print(f"{cid:5d}  {label:18s}  {c['name']}")
+        return
+    build(channels, os.path.normpath(args.out))
 
 
 if __name__ == "__main__":
