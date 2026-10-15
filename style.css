@@ -358,8 +358,9 @@ button { cursor: pointer; -webkit-tap-highlight-color: transparent; }
 }
 .card-foot {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 12px;
+  gap: 8px 12px;
   min-height: 40px;
 }
 .count {
@@ -385,22 +386,31 @@ button { cursor: pointer; -webkit-tap-highlight-color: transparent; }
   white-space: nowrap;
 }
 .stars .off { color: var(--frame-off); }
-.plus {
+.ep-btns {
   position: relative;
   z-index: 2;
+  display: flex;
+  gap: 6px;
   margin-left: auto;
+}
+.plus, .minus {
   height: 40px;
   padding: 0 16px;
   border: 0;
   border-radius: 999px;
-  background: var(--accent);
-  color: var(--accent-ink);
   font-size: var(--fs-sm);
   font-weight: 700;
   white-space: nowrap;
   transition: transform 0.08s ease-out;
 }
-.plus:active { transform: scale(0.94); }
+.plus { background: var(--accent); color: var(--accent-ink); }
+.minus {
+  padding: 0 12px;
+  border: 1px solid var(--line-strong);
+  background: var(--surface);
+  color: var(--ink);
+}
+.plus:active, .minus:active { transform: scale(0.94); }
 
 /* 1話 = 1コマ */
 .frames {

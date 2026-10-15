@@ -292,6 +292,20 @@
     return !(item.total && item.watched >= item.total);
   }
 
+  function canMinus(item) {
+    return item.watched > 0;
+  }
+
+  function episodeButtonsHTML(item, title) {
+    const minus = canMinus(item)
+      ? `<button type="button" class="minus" data-action="minus" aria-label="${title}を1話戻す">−1話</button>`
+      : '';
+    const plus = canPlus(item)
+      ? `<button type="button" class="plus" data-action="plus" aria-label="${title}を1話進める">＋1話</button>`
+      : '';
+    return minus || plus ? `<div class="ep-btns">${minus}${plus}</div>` : '';
+  }
+
   function cardHTML(item) {
     const season = seasonLabel(item);
     const title = esc(item.title);
@@ -308,7 +322,7 @@
   <div class="card-foot">
     <span class="count">${countHTML(item)}</span>
     ${starsHTML(item.rating)}
-    ${canPlus(item) ? `<button type="button" class="plus" data-action="plus" aria-label="${title}を1話進める">＋1話</button>` : ''}
+    ${episodeButtonsHTML(item, title)}
   </div>
 </article>`;
   }
@@ -339,18 +353,24 @@
   });
 
   /* ---------- list actions ---------- */
-  function plusOne(id) {
+  // 一覧の ＋1話／−1話 ボタン
+  function changeEpisode(id, delta) {
     const item = findItem(id);
     if (!item) return;
+    if (delta < 0 && item.watched <= 0) return;
     const before = { ...item };
 
-    item.watched += 1;
+    item.watched = Math.max(0, item.watched + delta);
     if (item.total && item.watched > item.total) item.watched = item.total;
-    if (item.status === 'want') item.status = 'watching';
-    let message = `${item.title}：${item.watched}話まで見ました`;
-    if (item.total && item.watched >= item.total) {
-      item.status = 'done';
-      message = `${item.title}を見終わりました`;
+    let message = item.watched > 0 ? `${item.title}：${item.watched}話まで見ました` : `${item.title}：未視聴に戻しました`;
+    if (delta > 0) {
+      if (item.status === 'want') item.status = 'watching';
+      if (item.total && item.watched >= item.total) {
+        item.status = 'done';
+        message = `${item.title}を見終わりました`;
+      }
+    } else if (item.status === 'done' && item.total && item.watched < item.total) {
+      item.status = 'watching';
     }
     item.updatedAt = Date.now();
     commit({ keepOrder: true });
@@ -372,11 +392,13 @@
     const card = target.closest('.card');
     if (!card) return;
     const id = card.dataset.id;
-    if (target.dataset.action === 'plus') {
+    const action = target.dataset.action;
+    if (action === 'plus' || action === 'minus') {
       const hadFocus = document.activeElement === target;
-      plusOne(id);
+      changeEpisode(id, action === 'plus' ? 1 : -1);
       if (hadFocus) {
-        const next = els.list.querySelector(`.card[data-id="${CSS.escape(id)}"] .plus`);
+        const buttons = els.list.querySelector(`.card[data-id="${CSS.escape(id)}"] .ep-btns`);
+        const next = buttons && (buttons.querySelector(`[data-action="${action}"]`) || buttons.querySelector('button'));
         if (next) next.focus();
       }
     } else {
