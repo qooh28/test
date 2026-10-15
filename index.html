@@ -72,7 +72,7 @@
       <select id="sort">
         <option value="updated">更新が新しい順</option>
         <option value="season">放送時期が新しい順</option>
-        <option value="rating">評価が高い順</option>
+        <option value="rating">評価順（星の数）</option>
         <option value="title">タイトル順</option>
       </select>
     </label>
@@ -95,6 +95,7 @@
       <span class="sr-only">並び順</span>
       <select id="find-sort">
         <option value="popular">人気順</option>
+        <option value="rating">評価順（星の数）</option>
         <option value="season">放送時期が新しい順</option>
         <option value="title">タイトル順</option>
       </select>
@@ -140,6 +141,7 @@
         <input type="text" id="f-title" maxlength="200" autocomplete="off" placeholder="例：葬送のフリーレン" aria-describedby="suggest">
         <div class="suggest" id="suggest" aria-label="作品の候補" hidden></div>
         <p class="error" id="f-title-error" hidden>タイトルを入力してください。</p>
+        <p class="season-note" id="f-season" hidden></p>
       </div>
 
       <fieldset class="field">
@@ -167,20 +169,6 @@
             <input type="number" id="f-total" inputmode="numeric" min="1" max="9999" step="1" placeholder="未定">
             <span>話</span>
           </div>
-        </div>
-      </div>
-
-      <div class="field">
-        <span class="label" id="season-label">放送時期</span>
-        <div class="field-row">
-          <select id="f-year" aria-label="放送年"></select>
-          <select id="f-cour" aria-label="クール">
-            <option value="">クール —</option>
-            <option value="winter">冬（1月〜）</option>
-            <option value="spring">春（4月〜）</option>
-            <option value="summer">夏（7月〜）</option>
-            <option value="fall">秋（10月〜）</option>
-          </select>
         </div>
       </div>
 

@@ -6,7 +6,6 @@
   const PREFS_KEY = 'anime-log:prefs';
   const CATALOG_URL = 'catalog.json'; // 配信サービスで見られる作品の一覧（scripts/build_catalog.py で作る）
   const SEGMENT_LIMIT = 30; // この話数までは1話ずつのコマで表示し、超えたら1本のバーにする
-  const FIRST_TV_ANIME_YEAR = 1963; // 年の選択肢の下限（国産初の連続TVアニメの年）
   const FIND_PAGE = 60; // 「作品をさがす」で一度に並べる件数
   const SUGGEST_LIMIT = 6;
 
@@ -23,9 +22,10 @@
     rating: (a, b) => b.rating - a.rating || b.updatedAt - a.updatedAt,
     title: (a, b) => collator.compare(a.title, b.title),
   };
-  // 作品一覧は人気順で読み込むので、人気順は並べ替え不要
+  // 作品一覧は人気順で読み込むので、人気順は並べ替え不要。評価順は自分の記録の星を使うので renderFind で並べる
   const FIND_SORTS = {
     popular: null,
+    rating: null,
     season: (a, b) => seasonRank(b) - seasonRank(a) || b.popularity - a.popularity,
     title: (a, b) => collator.compare(a.kana || a.title, b.kana || b.title),
   };
@@ -83,8 +83,7 @@
     title: $('f-title'),
     watched: $('f-watched'),
     total: $('f-total'),
-    year: $('f-year'),
-    cour: $('f-cour'),
+    season: $('f-season'),
     note: $('f-note'),
   };
 
@@ -98,6 +97,8 @@
     editingId: null,
     rating: 0,
     picked: null, // 入力候補や「作品をさがす」から選んだ作品 { id, title }
+    season: null, // 登録画面の放送時期 { year, cour }。選んだ作品から入る（手では選ばない）
+    baseSeason: null, // 選んだ作品をやめたときに戻す放送時期（編集中の作品のもの）
     find: { query: '', service: 'all', sort: 'popular', limit: FIND_PAGE },
   };
 
@@ -543,21 +544,27 @@
     const q = fold(state.find.query);
     const service = state.find.service;
     const list = catalog.works.filter((w) => (service === 'all' || w.services.includes(service)) && (!q || workFolded(w).includes(q)));
-    const sorter = FIND_SORTS[state.find.sort];
-    if (sorter) list.sort(sorter);
-
-    const mineIds = new Set();
-    const mineTitles = new Set();
+    // 記録済みの作品（一覧の作品 ID → 自分の記録）
+    const recorded = new Map();
     for (const it of state.items) {
-      if (it.sourceId) mineIds.add(it.sourceId);
-      mineTitles.add(fold(it.title));
+      const work = workFor(it);
+      if (work && !recorded.has(work.id)) recorded.set(work.id, it);
+    }
+
+    if (state.find.sort === 'rating') {
+      // 自分でつけた星の多い順。同じ星の数なら人気順のまま（sort は安定）
+      const stars = (w) => (recorded.get(w.id) || { rating: 0 }).rating;
+      list.sort((a, b) => stars(b) - stars(a));
+    } else {
+      const sorter = FIND_SORTS[state.find.sort];
+      if (sorter) list.sort(sorter);
     }
 
     const shown = list.slice(0, state.find.limit);
     els.findToolbar.hidden = false;
     els.findCount.textContent = `${list.length.toLocaleString('ja-JP')}作品`;
     els.works.hidden = shown.length === 0;
-    els.works.innerHTML = shown.map((w) => workHTML(w, mineIds.has(w.id) || mineTitles.has(fold(w.title)))).join('');
+    els.works.innerHTML = shown.map((w) => workHTML(w, recorded.get(w.id))).join('');
     els.findMore.hidden = list.length <= shown.length;
     els.findMore.textContent = `もっと見る（残り${(list.length - shown.length).toLocaleString('ja-JP')}作品）`;
     els.findEmpty.hidden = list.length > 0;
@@ -570,14 +577,14 @@
     els.catalogDate.textContent = catalog.generatedAt ? `（${catalog.generatedAt}時点）` : '';
   }
 
-  function workHTML(work, recorded) {
+  function workHTML(work, mine) {
     const services = work.services.length
       ? `<p class="svc-list">${work.services
         .map((id) => `<span class="svc${id === state.find.service ? ' on' : ''}">${esc(catalog.serviceNames.get(id) || id)}</span>`)
         .join('')}</p>`
       : '';
-    const action = recorded
-      ? '<span class="added">記録済み</span>'
+    const action = mine
+      ? `<span class="added">記録済み${mine.rating ? starsHTML(mine.rating) : ''}</span>`
       : `<button type="button" class="add-btn" data-work="${work.id}" aria-label="${esc(work.title)}を記録に追加">＋ 追加</button>`;
     const meta = workMeta(work);
     return `<article class="work">
@@ -750,19 +757,11 @@
   });
 
   /* ---------- editor ---------- */
-  function buildYearOptions() {
-    const thisYear = new Date().getFullYear();
-    const options = ['<option value="">年 —</option>'];
-    for (let y = thisYear + 1; y >= FIRST_TV_ANIME_YEAR; y -= 1) options.push(`<option value="${y}">${y}年</option>`);
-    f.year.innerHTML = options.join('');
-  }
-
-  function ensureYearOption(year) {
-    if (!year || f.year.querySelector(`option[value="${year}"]`)) return;
-    const opt = document.createElement('option');
-    opt.value = String(year);
-    opt.textContent = `${year}年`;
-    f.year.append(opt);
+  // 放送時期は表示だけ。作品一覧や候補から選んだ作品のものが入る
+  function setEditorSeason(season) {
+    state.season = season && season.year ? { year: season.year, cour: season.cour || null } : null;
+    f.season.textContent = state.season ? `放送時期：${seasonLabel(state.season)}` : '';
+    f.season.hidden = !state.season;
   }
 
   function currentStatus() {
@@ -798,9 +797,7 @@
   function fillWorkFields(work) {
     f.title.value = work.title;
     if (work.total) f.total.value = String(work.total);
-    ensureYearOption(work.year);
-    f.year.value = work.year ? String(work.year) : '';
-    f.cour.value = work.cour || '';
+    setEditorSeason(work);
     state.picked = work.sourceId ? { id: work.sourceId, title: work.title } : null;
   }
 
@@ -813,9 +810,8 @@
     setStatus(item ? item.status : (prefill && prefill.status) || 'watching');
     f.watched.value = String(item ? item.watched : 0);
     f.total.value = item && item.total ? String(item.total) : '';
-    if (item) ensureYearOption(item.year);
-    f.year.value = item && item.year ? String(item.year) : '';
-    f.cour.value = item && item.cour ? item.cour : '';
+    state.baseSeason = item && item.year ? { year: item.year, cour: item.cour } : null;
+    setEditorSeason(state.baseSeason);
     setRating(item ? item.rating : 0);
     f.note.value = item ? item.note : '';
     if (prefill) fillWorkFields(prefill);
@@ -898,6 +894,11 @@
 
   f.title.addEventListener('input', () => {
     if (f.title.value.trim()) els.titleError.hidden = true;
+    // 選んだ作品から題名を変えたら、その作品の放送時期は使わない
+    if (state.picked && f.title.value.trim() !== state.picked.title) {
+      state.picked = null;
+      setEditorSeason(state.baseSeason);
+    }
     renderSuggest();
   });
 
@@ -920,8 +921,8 @@
       status: currentStatus(),
       watched,
       total,
-      year: toYear(f.year.value),
-      cour: COUR[f.cour.value] ? f.cour.value : null,
+      year: state.season ? state.season.year : null,
+      cour: state.season ? state.season.cour : null,
       rating: state.rating,
       note: f.note.value.trim().slice(0, 5000),
       sourceId,
@@ -1063,7 +1064,6 @@
   });
 
   /* ---------- start ---------- */
-  buildYearOptions();
   load();
   setMode(state.mode);
 
