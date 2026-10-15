@@ -20,15 +20,39 @@
     updated: (a, b) => b.updatedAt - a.updatedAt,
     season: (a, b) => seasonRank(b) - seasonRank(a) || b.updatedAt - a.updatedAt,
     rating: (a, b) => b.rating - a.rating || b.updatedAt - a.updatedAt,
-    // 読みがながあれば読みがなの、あいうえお順。手入力の作品など読みがながなければ題名の文字で並べる
-    title: (a, b) => collator.compare(a.kana || a.title, b.kana || b.title),
+    title: (a, b) => compareReading(readingKey(a.kana || a.title), readingKey(b.kana || b.title)),
   };
   // 作品一覧は人気順で読み込むので、人気順は並べ替え不要。評価順は自分の記録の星を使うので renderFind で並べる
   const FIND_SORTS = {
     popular: null,
     rating: null,
     season: (a, b) => seasonRank(b) - seasonRank(a) || b.popularity - a.popularity,
-    title: (a, b) => collator.compare(a.kana || a.title, b.kana || b.title),
+    // 作品一覧の読みは、作るときにひらがなだけに整えてある（scripts/readings.py）
+    title: (a, b) => compareReading(a.kana || readingKey(a.title), b.kana || readingKey(b.title)),
+  };
+
+  // タイトル順の比べ方：読み（ひらがな）のあいうえお順。
+  // 読みが分からない作品（作品一覧にない題名を手で入力し、漢字や英字で始まるもの）は最後にまとめる
+  const startsWithKana = (s) => /^[ぁ-ゖ]/.test(s);
+  function compareReading(a, b) {
+    return (startsWithKana(b) - startsWithKana(a)) || collator.compare(a, b);
+  }
+
+  // 読みの比べる部分：括弧・記号・空白は読まず、カタカナはひらがなにそろえる
+  function readingKey(text) {
+    return String(text)
+      .normalize('NFKC')
+      .replace(/[ァ-ヶ]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0x60))
+      .replace(/[^\p{L}\p{N}]/gu, '');
+  }
+
+  // サンプルの読み（作品一覧の題名と一致しないものがあるので、ここで持つ）
+  const SAMPLE_KANA = {
+    '葬送のフリーレン': 'そうそうのふりーれん',
+    'ダンジョン飯': 'だんじょんめし',
+    'ぼっち・ざ・ろっく！': 'ぼっちざろっく',
+    '薬屋のひとりごと': 'くすりやのひとりごと',
+    'ONE PIECE': 'わんぴーす',
   };
 
   const $ = (id) => document.getElementById(id);
@@ -197,7 +221,7 @@
       { title: 'ぼっち・ざ・ろっく！', status: 'done', watched: 12, total: 12, year: 2022, cour: 'fall', rating: 5, note: '文化祭ライブの回は何度でも見返せる。', ago: 50 },
       { title: '薬屋のひとりごと', status: 'want', watched: 0, total: 24, year: 2023, cour: 'fall', rating: 0, note: '友だちのおすすめ。', ago: 74 },
       { title: 'ONE PIECE', status: 'dropped', watched: 380, total: null, year: 1999, cour: 'fall', rating: 0, note: '長いので一旦お休み。続きは381話から。', ago: 300 },
-    ].map(({ ago, ...s }) => normalize({ ...s, id: newId(), sample: true, createdAt: now - ago * hour, updatedAt: now - ago * hour }));
+    ].map(({ ago, ...s }) => normalize({ ...s, kana: SAMPLE_KANA[s.title], id: newId(), sample: true, createdAt: now - ago * hour, updatedAt: now - ago * hour }));
   }
 
   /* ---------- storage ---------- */
@@ -293,14 +317,15 @@
   }
 
   // 読みがなのない記録に、作品一覧の読みがなを入れる（作品を選んで登録した記録か、題名が一致する記録）
+  // 記録の読みを、作品一覧の読みにそろえる（作品一覧の読みのほうが整っているので、あれば上書きする）
   function fillKana() {
     if (catalog.status !== 'ready') return false;
     let filled = false;
     for (const item of state.items) {
-      if (item.kana) continue;
       const work = workFor(item);
-      if (work && work.kana) {
-        item.kana = work.kana;
+      const kana = (work && work.kana) || (item.sample && SAMPLE_KANA[item.title]) || '';
+      if (kana && item.kana !== kana) {
+        item.kana = kana;
         filled = true;
       }
     }
@@ -308,9 +333,9 @@
     return filled;
   }
 
-  // タイトル順で並べるのに、読みがなのない記録があれば作品一覧を読み込む
+  // マイリストをタイトル順で並べるときは、記録の読みをそろえるために作品一覧を読み込む
   function needKana() {
-    return state.mode === 'mine' && state.sort === 'title' && state.items.some((it) => !it.kana);
+    return state.mode === 'mine' && state.sort === 'title' && catalog.status !== 'ready';
   }
 
   function prepareCatalog(data) {

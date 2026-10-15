@@ -5,6 +5,10 @@
   python3 scripts/build_catalog.py             # Annict の全作品（タイトル検索用、配信サービスなし）
   python3 scripts/build_catalog.py --services  # 配信サービスの記録がある作品だけ、サービス付きで
   python3 scripts/build_catalog.py --discover  # Annict にある配信チャンネルを表示するだけ
+  python3 scripts/build_catalog.py --update-readings  # 今の catalog.json の読み（タイトル順用）だけ作り直す
+
+どの作品にも、タイトル順に使う読み（ひらがな）を付ける（scripts/readings.py）。
+必要なもの: pip install pykakasi alkana
 
 --services のしくみ:
   1. 人気の作品を順に見て、配信サービス（チャンネル）の一覧を集める
@@ -27,6 +31,8 @@ import time
 import unicodedata
 import urllib.error
 import urllib.request
+
+from readings import Readings
 
 API = "https://api.annict.com/graphql"
 WAIT_SECONDS = 0.3  # Annict に負担をかけないよう、1回ごとに少し待つ
@@ -224,12 +230,24 @@ def to_entry(work, services):
     return entry
 
 
-def write_catalog(entries, services, out_path):
+def add_readings(entries):
+    """タイトル順に使う読み（ひらがな）を全作品に付ける。Annict の読みがなは整え、ないものは作る。"""
+    readings = Readings((e["t"], e.get("k")) for e in entries)
+    for entry in entries:
+        reading = readings.reading(entry["t"], entry.get("k"))
+        if reading:
+            entry["k"] = reading
+        else:
+            entry.pop("k", None)
+
+
+def write_catalog(entries, services, out_path, generated_at=None):
+    add_readings(entries)
     entries.sort(key=lambda e: -e["p"])
     today = datetime.date.today()
     catalog = {
         "source": "Annict (https://annict.com)",
-        "generatedAt": f"{today.year}年{today.month}月{today.day}日",
+        "generatedAt": generated_at or f"{today.year}年{today.month}月{today.day}日",
         "services": services,
         "works": entries,
     }
@@ -269,9 +287,16 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--services", action="store_true", help="配信サービスの記録がある作品だけを、サービス付きで書き出す")
     parser.add_argument("--discover", action="store_true", help="Annict にある配信チャンネルを表示するだけ")
+    parser.add_argument("--update-readings", action="store_true", help="Annict に問い合わせず、今の catalog.json の読みだけ作り直す")
     parser.add_argument("--out", default=os.path.join(os.path.dirname(__file__), "..", "catalog.json"))
     args = parser.parse_args()
     out_path = os.path.normpath(args.out)
+
+    if args.update_readings:
+        with open(out_path, encoding="utf-8") as fp:
+            current = json.load(fp)
+        write_catalog(current["works"], current["services"], out_path, current.get("generatedAt"))
+        return
 
     if not args.services and not args.discover:
         build_titles(out_path)
