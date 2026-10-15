@@ -60,6 +60,7 @@ query ($after: String) {
       episodesCount
       watchersCount
       programs(first: 100) {
+        pageInfo { hasNextPage endCursor }
         nodes { channel { name } }
       }
     }
@@ -67,10 +68,29 @@ query ($after: String) {
 }
 """ % PAGE_SIZE
 
+# 放送局が多い長寿作品は、配信チャンネルが2ページ目以降に入ることがあるので続きを取る
+MORE_PROGRAMS_QUERY = """
+query ($ids: [Int!], $after: String) {
+  searchWorks(annictIds: $ids, first: 1) {
+    nodes {
+      programs(first: 100, after: $after) {
+        pageInfo { hasNextPage endCursor }
+        nodes { channel { name } }
+      }
+    }
+  }
+}
+"""
+
 
 def post(query, variables):
     body = json.dumps({"query": query, "variables": variables}).encode()
-    headers = {"Content-Type": "application/json", "Accept": "application/json"}
+    # 既定の User-Agent（Python-urllib）だと Annict 側で拒否される
+    headers = {
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+        "User-Agent": "anime-log-catalog/1.0 (+https://github.com/qooh28/test)",
+    }
     token = os.environ.get("ANNICT_TOKEN")
     if token:
         headers["Authorization"] = f"Bearer {token}"
@@ -92,20 +112,44 @@ def post(query, variables):
     raise RuntimeError("Annict への問い合わせが続けて失敗しました")
 
 
-def fetch_all_works():
+def complete_programs(work):
+    programs = work["programs"]
+    while programs["pageInfo"]["hasNextPage"]:
+        time.sleep(WAIT_SECONDS)
+        data = post(MORE_PROGRAMS_QUERY, {"ids": [work["annictId"]], "after": programs["pageInfo"]["endCursor"]})
+        more = data["searchWorks"]["nodes"][0]["programs"]
+        programs["nodes"].extend(more["nodes"])
+        programs["pageInfo"] = more["pageInfo"]
+
+
+def fetch_all_works(cache_path=None, limit=0):
+    """全作品を人気順に取る。cache_path を渡すと1ページごとに保存し、途中で止まっても続きから再開する。"""
+    works = []
     after = None
-    page = 0
-    while True:
-        page += 1
+    done = False
+    if cache_path and os.path.exists(cache_path):
+        with open(cache_path, encoding="utf-8") as fp:
+            for line in fp:
+                page = json.loads(line)
+                works.extend(page["nodes"])
+                after, done = page["next"], not page["hasNext"]
+        print(f"保存済みの{len(works)}作品から再開します", file=sys.stderr)
+
+    page_no = 0
+    while not done and not (limit and len(works) >= limit):
+        page_no += 1
         data = post(QUERY, {"after": after})["searchWorks"]
-        nodes = data["nodes"]
-        yield from nodes
-        print(f"\r{page}ページ目まで取得", end="", file=sys.stderr, flush=True)
-        if not data["pageInfo"]["hasNextPage"]:
-            break
-        after = data["pageInfo"]["endCursor"]
+        for work in data["nodes"]:
+            complete_programs(work)
+        works.extend(data["nodes"])
+        after, done = data["pageInfo"]["endCursor"], not data["pageInfo"]["hasNextPage"]
+        if cache_path:
+            with open(cache_path, "a", encoding="utf-8") as fp:
+                fp.write(json.dumps({"next": after, "hasNext": not done, "nodes": data["nodes"]}, ensure_ascii=False) + "\n")
+        print(f"\r{len(works)}作品まで取得", end="", file=sys.stderr, flush=True)
         time.sleep(WAIT_SECONDS)
     print(file=sys.stderr)
+    return works[:limit] if limit else works
 
 
 def norm(name):
@@ -132,11 +176,11 @@ def discover(works):
         print(f"{count:6d}  {label:14s}  {name}")
 
 
-def build(works, out_path):
+def build(works, out_path, all_works=False):
     entries = []
     for work in works:
         services = sorted({i for p in work["programs"]["nodes"] if (i := service_of(p["channel"]["name"])) is not None})
-        if not services or not work.get("title"):
+        if not work.get("title") or (not services and not all_works):
             continue
         entry = {"id": work["annictId"], "t": work["title"].strip()}
         if work.get("titleKana"):
@@ -171,7 +215,8 @@ def build(works, out_path):
     for entry in entries:
         for i in entry["s"]:
             per_service[SERVICES[i][1]] += 1
-    print(f"{len(entries)}作品を {out_path} に書き出しました", file=sys.stderr)
+    with_service = sum(1 for entry in entries if entry["s"])
+    print(f"{len(entries)}作品（うち配信サービスの記録あり {with_service}作品）を {out_path} に書き出しました", file=sys.stderr)
     for name, count in per_service.items():
         print(f"  {name}: {count}", file=sys.stderr)
 
@@ -181,18 +226,16 @@ def main():
     parser.add_argument("--discover", action="store_true", help="配信チャンネル名と作品数を表示するだけ")
     parser.add_argument("--out", default=os.path.join(os.path.dirname(__file__), "..", "catalog.json"))
     parser.add_argument("--limit", type=int, default=0, help="試しに先頭の何作品だけ取るか（0 = 全部）")
+    parser.add_argument("--cache", help="取得した生データを保存するファイル（JSON Lines）。あれば続きから再開する")
+    parser.add_argument("--all-works", action="store_true", help="配信サービスの記録がない作品も入れる（タイトル検索用）")
     args = parser.parse_args()
 
-    works = []
-    for work in fetch_all_works():
-        works.append(work)
-        if args.limit and len(works) >= args.limit:
-            break
+    works = fetch_all_works(args.cache, args.limit)
 
     if args.discover:
         discover(works)
     else:
-        build(works, os.path.normpath(args.out))
+        build(works, os.path.normpath(args.out), args.all_works)
 
 
 if __name__ == "__main__":
