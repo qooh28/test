@@ -57,6 +57,13 @@
     '薬屋のひとりごと': 'くすりやのひとりごと',
     'ONE PIECE': 'わんぴーす',
   };
+  const SAMPLE_IMAGES = {
+    '葬送のフリーレン': 'bx154587-qQTzQnEJJ3oB.jpg',
+    'ダンジョン飯': 'bx153518-IVXPDY5ph3kO.jpg',
+    'ぼっち・ざ・ろっく！': 'bx130003-HTDmeL4RGeJ4.png',
+    '薬屋のひとりごと': 'bx161645-QLbzHXiYRgV2.jpg',
+    'ONE PIECE': 'bx21-ELSYx3yMPcKM.jpg',
+  };
 
   const $ = (id) => document.getElementById(id);
   const els = {
@@ -226,7 +233,7 @@
       { title: 'ぼっち・ざ・ろっく！', status: 'done', watched: 12, total: 12, year: 2022, cour: 'fall', rating: 5, note: '文化祭ライブの回は何度でも見返せる。', ago: 50 },
       { title: '薬屋のひとりごと', status: 'want', watched: 0, total: 24, year: 2023, cour: 'fall', rating: 0, note: '友だちのおすすめ。', ago: 74 },
       { title: 'ONE PIECE', status: 'dropped', watched: 380, total: null, year: 1999, cour: 'fall', rating: 0, note: '長いので一旦お休み。続きは381話から。', ago: 300 },
-    ].map(({ ago, ...s }) => normalize({ ...s, kana: SAMPLE_KANA[s.title], id: newId(), sample: true, createdAt: now - ago * hour, updatedAt: now - ago * hour }));
+    ].map(({ ago, ...s }) => normalize({ ...s, kana: SAMPLE_KANA[s.title], image: SAMPLE_IMAGES[s.title], id: newId(), sample: true, createdAt: now - ago * hour, updatedAt: now - ago * hour }));
   }
 
   /* ---------- storage ---------- */
@@ -334,8 +341,9 @@
         item.kana = kana;
         kanaChanged = true;
       }
-      if (work && work.image && item.image !== work.image) {
-        item.image = work.image;
+      const image = (work && work.image) || (item.sample && SAMPLE_IMAGES[item.title]) || '';
+      if (image && item.image !== image) {
+        item.image = image;
         changed = true;
       }
     }
