@@ -1,0 +1,16 @@
+{
+  "name": "アニメ視聴記録",
+  "short_name": "アニメ記録",
+  "description": "見たいアニメ、視聴中の話数、見終わった作品の評価と感想を記録するアプリ。",
+  "lang": "ja",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f5f5fa",
+  "theme_color": "#f5f5fa",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

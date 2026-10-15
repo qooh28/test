@@ -1,0 +1,220 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>アニメ視聴記録</title>
+<meta name="description" content="見たいアニメ、視聴中の話数、見終わった作品の評価と感想を記録するアプリ。">
+<meta name="theme-color" content="#f5f5fa" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#11121c" media="(prefers-color-scheme: dark)">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="アニメ記録">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<!-- shared:head -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Dela+Gothic+One&family=Zen+Kaku+Gothic+New:wght@400;500;700&display=swap">
+<link rel="stylesheet" href="style.css">
+<!-- /shared:head -->
+</head>
+<body>
+<!-- shared:body -->
+<header class="top wrap">
+  <div class="brand">
+    <h1>アニメ視聴記録</h1>
+    <p id="summary" class="summary">0作品</p>
+  </div>
+  <button type="button" class="icon-btn" id="open-menu" aria-label="設定とバックアップ">
+    <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><circle cx="5" cy="12" r="2" fill="currentColor"/><circle cx="12" cy="12" r="2" fill="currentColor"/><circle cx="19" cy="12" r="2" fill="currentColor"/></svg>
+  </button>
+  <label class="search">
+    <svg class="search-icon" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M15.5 15.5 20 20" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+    <span class="sr-only">検索</span>
+    <input type="search" id="search" placeholder="タイトルや感想で検索" autocomplete="off" enterkeyhint="search">
+  </label>
+</header>
+
+<nav class="tabbar" aria-label="状態で絞り込み">
+  <div class="wrap">
+    <div class="tabs" id="tabs">
+      <button type="button" data-tab="all" aria-pressed="true">すべて<span class="n">0</span></button>
+      <button type="button" data-tab="watching" aria-pressed="false"><i class="dot s-watching"></i>視聴中<span class="n">0</span></button>
+      <button type="button" data-tab="want" aria-pressed="false"><i class="dot s-want"></i>見たい<span class="n">0</span></button>
+      <button type="button" data-tab="done" aria-pressed="false"><i class="dot s-done"></i>見終わった<span class="n">0</span></button>
+      <button type="button" data-tab="dropped" aria-pressed="false"><i class="dot s-dropped"></i>中断<span class="n">0</span></button>
+    </div>
+  </div>
+</nav>
+
+<main class="wrap main">
+  <div class="notice warn" id="storage-warn" hidden>
+    <p>この環境では記録を保存できません。プライベートブラウズを使っている場合は、通常のタブで開いてください。</p>
+  </div>
+  <div class="notice" id="sample-note" hidden>
+    <p>いま並んでいるのはサンプルの作品です。自分の作品を登録したら、サンプルは消せます。</p>
+    <button type="button" class="link-btn" id="clear-samples-inline">サンプルを消す</button>
+  </div>
+
+  <div class="toolbar" id="toolbar">
+    <span class="result-count" id="result-count">0件</span>
+    <label class="sort">
+      <span class="sr-only">並び順</span>
+      <select id="sort">
+        <option value="updated">更新が新しい順</option>
+        <option value="season">放送時期が新しい順</option>
+        <option value="rating">評価が高い順</option>
+        <option value="title">タイトル順</option>
+      </select>
+    </label>
+  </div>
+
+  <div class="list" id="list"></div>
+
+  <div class="empty" id="empty" hidden>
+    <div class="frames empty-frames" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i></div>
+    <h2 id="empty-title">まだ作品がありません</h2>
+    <p id="empty-body"></p>
+    <button type="button" class="btn primary" id="empty-add" hidden>作品を追加</button>
+  </div>
+</main>
+
+<button type="button" class="fab" id="add">
+  <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg>
+  作品を追加
+</button>
+
+<div class="toast" id="toast" role="status" aria-live="polite" hidden>
+  <span id="toast-msg"></span>
+  <button type="button" id="toast-action" hidden></button>
+</div>
+
+<dialog class="sheet" id="editor" aria-labelledby="editor-title">
+  <form id="editor-form" novalidate>
+    <div class="sheet-head">
+      <h2 id="editor-title">作品を登録</h2>
+      <button type="button" class="icon-btn" data-close aria-label="閉じる">
+        <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>
+      </button>
+    </div>
+
+    <div class="sheet-body" id="editor-body">
+      <div class="field">
+        <label class="label" for="f-title">タイトル</label>
+        <input type="text" id="f-title" maxlength="200" autocomplete="off" placeholder="例：葬送のフリーレン">
+        <p class="error" id="f-title-error" hidden>タイトルを入力してください。</p>
+      </div>
+
+      <fieldset class="field">
+        <legend class="label">状態</legend>
+        <div class="seg">
+          <label class="s-want"><input type="radio" name="status" id="f-status-want" value="want"><span>見たい</span></label>
+          <label class="s-watching"><input type="radio" name="status" id="f-status-watching" value="watching"><span>視聴中</span></label>
+          <label class="s-done"><input type="radio" name="status" id="f-status-done" value="done"><span>見終わった</span></label>
+          <label class="s-dropped"><input type="radio" name="status" id="f-status-dropped" value="dropped"><span>中断</span></label>
+        </div>
+      </fieldset>
+
+      <div class="field-row">
+        <div class="field">
+          <label class="label" for="f-watched">見た話数</label>
+          <div class="stepper">
+            <button type="button" data-step="-1" aria-label="1話減らす">−</button>
+            <input type="number" id="f-watched" inputmode="numeric" min="0" max="9999" step="1">
+            <button type="button" data-step="1" aria-label="1話増やす">＋</button>
+          </div>
+        </div>
+        <div class="field">
+          <label class="label" for="f-total">全話数</label>
+          <div class="with-unit">
+            <input type="number" id="f-total" inputmode="numeric" min="1" max="9999" step="1" placeholder="未定">
+            <span>話</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="field">
+        <span class="label" id="season-label">放送時期</span>
+        <div class="field-row">
+          <select id="f-year" aria-label="放送年"></select>
+          <select id="f-cour" aria-label="クール">
+            <option value="">クール —</option>
+            <option value="winter">冬（1月〜）</option>
+            <option value="spring">春（4月〜）</option>
+            <option value="summer">夏（7月〜）</option>
+            <option value="fall">秋（10月〜）</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="field">
+        <span class="label" id="rating-label">評価</span>
+        <div class="rating" role="radiogroup" aria-labelledby="rating-label">
+          <button type="button" role="radio" data-star="1" aria-label="星1つ" aria-checked="false">★</button>
+          <button type="button" role="radio" data-star="2" aria-label="星2つ" aria-checked="false">★</button>
+          <button type="button" role="radio" data-star="3" aria-label="星3つ" aria-checked="false">★</button>
+          <button type="button" role="radio" data-star="4" aria-label="星4つ" aria-checked="false">★</button>
+          <button type="button" role="radio" data-star="5" aria-label="星5つ" aria-checked="false">★</button>
+          <span class="rating-text" id="rating-text">未評価</span>
+        </div>
+      </div>
+
+      <div class="field">
+        <label class="label" for="f-note">感想・メモ</label>
+        <textarea id="f-note" rows="4" maxlength="5000" placeholder="好きなシーンや感想、続きのメモなど"></textarea>
+      </div>
+    </div>
+
+    <div class="sheet-foot">
+      <div class="foot-row" id="foot-main">
+        <button type="button" class="btn-text danger" id="delete" hidden>削除</button>
+        <span class="spacer"></span>
+        <button type="button" class="btn ghost" data-close>キャンセル</button>
+        <button type="submit" class="btn primary">保存</button>
+      </div>
+      <div class="foot-row confirm" id="foot-confirm" hidden>
+        <p id="confirm-text">この作品を削除しますか？</p>
+        <button type="button" class="btn ghost" id="delete-cancel">やめる</button>
+        <button type="button" class="btn danger-fill" id="delete-confirm">削除する</button>
+      </div>
+    </div>
+  </form>
+</dialog>
+
+<dialog class="sheet" id="menu" aria-labelledby="menu-title">
+  <div class="sheet-head">
+    <h2 id="menu-title">設定とバックアップ</h2>
+    <button type="button" class="icon-btn" data-close aria-label="閉じる">
+      <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>
+    </button>
+  </div>
+  <div class="sheet-body menu-body">
+    <section class="menu-sec">
+      <h3>記録の保存場所</h3>
+      <p>記録はこの端末のブラウザの中に保存されます。ホーム画面に追加して使うと消えにくくなります。機種変更やブラウザのデータ削除の前に、バックアップを書き出してください。</p>
+    </section>
+    <section class="menu-sec">
+      <h3>バックアップ</h3>
+      <div class="menu-actions">
+        <button type="button" class="btn ghost" id="export">バックアップを書き出す</button>
+        <label class="btn ghost" for="import-file">バックアップを読み込む</label>
+        <input type="file" id="import-file" accept="application/json,.json" class="sr-only">
+      </div>
+      <p class="hint">読み込むと、同じ作品は新しいほうの記録が残り、それ以外は追加されます。</p>
+    </section>
+    <section class="menu-sec" id="menu-samples" hidden>
+      <h3>サンプル</h3>
+      <div class="menu-actions">
+        <button type="button" class="btn ghost" id="clear-samples">サンプルの作品を消す</button>
+      </div>
+    </section>
+    <p class="version">アニメ視聴記録 v1.0.0</p>
+  </div>
+</dialog>
+<!-- /shared:body -->
+<script src="app.js"></script>
+</body>
+</html>
