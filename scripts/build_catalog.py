@@ -1,14 +1,16 @@
 #!/usr/bin/env python3
-"""Annict から「配信サービスで見られる作品」の一覧を作り、catalog.json に書き出す。
+"""Annict からアニメ作品の一覧を作り、catalog.json に書き出す。
 
 使い方:
-  python3 scripts/build_catalog.py             # catalog.json を作る
+  python3 scripts/build_catalog.py             # Annict の全作品（タイトル検索用、配信サービスなし）
+  python3 scripts/build_catalog.py --services  # 配信サービスの記録がある作品だけ、サービス付きで
   python3 scripts/build_catalog.py --discover  # Annict にある配信チャンネルを表示するだけ
 
-しくみ:
+--services のしくみ:
   1. 人気の作品を順に見て、配信サービス（チャンネル）の一覧を集める
   2. 配信サービスごとに、そこで配信された作品（Annict の「番組」）を全部たどる
   3. 作品ごとに、配信されたサービスをまとめて catalog.json に書く
+  Annict の配信の記録は新作に偏っていて、主要作品でも抜けが多いので、今は使っていない。
 
 Annict のアクセストークンは、環境変数 ANNICT_TOKEN か、
 Claude Code の環境の Network secrets（api.annict.com 宛ての Authorization ヘッダー）で渡す。
@@ -53,6 +55,17 @@ STREAMING_GROUPS = {"動画サービス", "ABEMA"}
 
 MEDIA = {"TV": "tv", "MOVIE": "movie", "OVA": "ova", "WEB": "web", "OTHER": "other"}
 SEASON = {"WINTER": "winter", "SPRING": "spring", "SUMMER": "summer", "AUTUMN": "fall"}
+
+WORK_FIELDS = "annictId title titleKana titleEn media seasonName seasonYear episodesCount watchersCount"
+
+ALL_WORKS_QUERY = """
+query ($after: String) {
+  searchWorks(orderBy: { field: WATCHERS_COUNT, direction: DESC }, first: 200, after: $after) {
+    pageInfo { hasNextPage endCursor }
+    nodes { %s }
+  }
+}
+""" % WORK_FIELDS
 
 SCAN_QUERY = """
 query ($after: String) {
@@ -173,6 +186,21 @@ def fetch_channel_works(ref):
         time.sleep(WAIT_SECONDS)
 
 
+def fetch_all_works():
+    works = []
+    after = None
+    while True:
+        data = post(ALL_WORKS_QUERY, {"after": after})["searchWorks"]
+        works.extend(data["nodes"])
+        print(f"\r{len(works)}作品まで取得", end="", file=sys.stderr, flush=True)
+        if not data["pageInfo"]["hasNextPage"]:
+            break
+        after = data["pageInfo"]["endCursor"]
+        time.sleep(WAIT_SECONDS)
+    print(file=sys.stderr)
+    return works
+
+
 def to_entry(work, services):
     entry = {"id": work["annictId"], "t": work["title"].strip()}
     if work.get("titleKana"):
@@ -190,9 +218,29 @@ def to_entry(work, services):
         entry["n"] = episodes
     if work.get("media") in MEDIA:
         entry["m"] = MEDIA[work["media"]]
-    entry["s"] = sorted(services)
+    if services:
+        entry["s"] = sorted(services)
     entry["p"] = work.get("watchersCount") or 0
     return entry
+
+
+def write_catalog(entries, services, out_path):
+    entries.sort(key=lambda e: -e["p"])
+    today = datetime.date.today()
+    catalog = {
+        "source": "Annict (https://annict.com)",
+        "generatedAt": f"{today.year}年{today.month}月{today.day}日",
+        "services": services,
+        "works": entries,
+    }
+    with open(out_path, "w", encoding="utf-8") as fp:
+        json.dump(catalog, fp, ensure_ascii=False, separators=(",", ":"))
+    print(f"{len(entries)}作品を {out_path} に書き出しました", file=sys.stderr)
+
+
+def build_titles(out_path):
+    entries = [to_entry(w, ()) for w in fetch_all_works() if (w.get("title") or "").strip()]
+    write_catalog(entries, [], out_path)
 
 
 def build(channels, out_path):
@@ -210,18 +258,7 @@ def build(channels, out_path):
             services.setdefault(work["annictId"], set()).add(index)
 
     entries = [to_entry(works[wid], services[wid]) for wid in works]
-    entries.sort(key=lambda e: -e["p"])
-    today = datetime.date.today()
-    catalog = {
-        "source": "Annict (https://annict.com)",
-        "generatedAt": f"{today.year}年{today.month}月{today.day}日",
-        "services": [{"id": sid, "name": name} for sid, name, _ in SERVICES],
-        "works": entries,
-    }
-    with open(out_path, "w", encoding="utf-8") as fp:
-        json.dump(catalog, fp, ensure_ascii=False, separators=(",", ":"))
-
-    print(f"{len(entries)}作品を {out_path} に書き出しました", file=sys.stderr)
+    write_catalog(entries, [{"id": sid, "name": name} for sid, name, _ in SERVICES], out_path)
     for index, (_, name, _) in enumerate(SERVICES):
         count = sum(1 for e in entries if index in e["s"])
         if count:
@@ -230,9 +267,15 @@ def build(channels, out_path):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("--services", action="store_true", help="配信サービスの記録がある作品だけを、サービス付きで書き出す")
     parser.add_argument("--discover", action="store_true", help="Annict にある配信チャンネルを表示するだけ")
     parser.add_argument("--out", default=os.path.join(os.path.dirname(__file__), "..", "catalog.json"))
     args = parser.parse_args()
+    out_path = os.path.normpath(args.out)
+
+    if not args.services and not args.discover:
+        build_titles(out_path)
+        return
 
     channels = discover_channels()
     if args.discover:
@@ -241,7 +284,7 @@ def main():
             label = SERVICES[index][1] if index is not None else "（入れない）"
             print(f"{cid:5d}  {label:18s}  {c['name']}")
         return
-    build(channels, os.path.normpath(args.out))
+    build(channels, out_path)
 
 
 if __name__ == "__main__":

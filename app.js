@@ -35,6 +35,7 @@
     summary: $('summary'),
     modes: $('modes'),
     search: $('search'),
+    tabbar: document.querySelector('.tabbar'),
     tabs: $('tabs'),
     serviceTabs: $('service-tabs'),
     mineView: $('mine-view'),
@@ -307,7 +308,6 @@
         services: (Array.isArray(w.s) ? w.s : []).filter((i) => services[i]).map((i) => services[i].id),
         popularity: Number(w.p) || 0,
       };
-      work.folded = [fold(work.title), fold(work.kana), fold(work.en)].join('|');
       works.push(work);
     }
     works.sort((a, b) => b.popularity - a.popularity || seasonRank(b) - seasonRank(a));
@@ -320,11 +320,7 @@
     catalog.serviceNames = new Map(services.map((s) => [s.id, s.name]));
     catalog.works = works;
     catalog.byId = new Map(works.map((w) => [w.id, w]));
-    catalog.byTitle = new Map();
-    for (const w of works) {
-      const key = fold(w.title);
-      if (!catalog.byTitle.has(key)) catalog.byTitle.set(key, w); // 同じ題名なら人気の高いほう
-    }
+    catalog.byTitle = null; // 必要になったときに作る（titleIndex）
     catalog.generatedAt = typeof data.generatedAt === 'string' ? data.generatedAt : '';
     catalog.status = 'ready';
     if (state.find.service !== 'all' && !catalog.services.some((s) => s.id === state.find.service)) {
@@ -332,10 +328,27 @@
     }
   }
 
+  // 検索用の文字列。作品数が多いので、読み込み時ではなく初めて検索したときに作る
+  function workFolded(work) {
+    if (work.folded === undefined) work.folded = [fold(work.title), fold(work.kana), fold(work.en)].join('|');
+    return work.folded;
+  }
+
+  function titleIndex() {
+    if (!catalog.byTitle) {
+      catalog.byTitle = new Map();
+      for (const w of catalog.works) {
+        const key = fold(w.title);
+        if (!catalog.byTitle.has(key)) catalog.byTitle.set(key, w); // 同じ題名なら人気の高いほう
+      }
+    }
+    return catalog.byTitle;
+  }
+
   // 記録した作品に対応する一覧の作品（選んで登録した作品は ID で、それ以外は題名で探す）
   function workFor(item) {
     if (catalog.status !== 'ready') return null;
-    return (item.sourceId && catalog.byId.get(item.sourceId)) || catalog.byTitle.get(fold(item.title)) || null;
+    return (item.sourceId && catalog.byId.get(item.sourceId)) || titleIndex().get(fold(item.title)) || null;
   }
 
   function serviceNames(work) {
@@ -347,6 +360,9 @@
     const find = state.mode === 'find';
     els.mineView.hidden = find;
     els.findView.hidden = !find;
+    // 作品データに配信サービスの情報がないときは、サービスの絞り込みを出さない
+    const hasServices = catalog.status === 'ready' && catalog.services.length > 0;
+    els.tabbar.hidden = find && !hasServices;
     els.tabs.hidden = find;
     els.serviceTabs.hidden = !find;
     els.fab.hidden = find;
@@ -442,6 +458,7 @@
   }
 
   function whereHTML(item) {
+    if (!catalog.services.length) return '';
     const work = workFor(item);
     if (!work || !work.services.length) return '';
     return `<p class="where">配信：${esc(serviceNames(work).join('・'))}</p>`;
@@ -511,7 +528,7 @@
       const messages = {
         idle: ['作品データを読み込んでいます', ''],
         loading: ['作品データを読み込んでいます', ''],
-        missing: ['作品データはまだ入っていません', '準備ができたら、ここに配信サービスで見られる作品が並びます。それまでは「マイリスト」の「作品を追加」から登録できます。'],
+        missing: ['作品データはまだ入っていません', '準備ができたら、ここにアニメの作品が並びます。それまでは「マイリスト」の「作品を追加」から登録できます。'],
         error: ['作品データを読み込めませんでした', '電波の良い場所で、もう一度読み込んでください。'],
       };
       const [title, body] = messages[catalog.status];
@@ -525,7 +542,7 @@
     renderServiceTabs();
     const q = fold(state.find.query);
     const service = state.find.service;
-    const list = catalog.works.filter((w) => (service === 'all' || w.services.includes(service)) && (!q || w.folded.includes(q)));
+    const list = catalog.works.filter((w) => (service === 'all' || w.services.includes(service)) && (!q || workFolded(w).includes(q)));
     const sorter = FIND_SORTS[state.find.sort];
     if (sorter) list.sort(sorter);
 
@@ -825,7 +842,7 @@
     }
     const hits = [];
     for (const w of catalog.works) {
-      if (w.folded.includes(q)) {
+      if (workFolded(w).includes(q)) {
         hits.push(w);
         if (hits.length >= SUGGEST_LIMIT) break;
       }
@@ -1049,8 +1066,6 @@
   buildYearOptions();
   load();
   setMode(state.mode);
-  // 記録した作品の配信サービスを出すため、画面を出した後で作品一覧を読み込む
-  setTimeout(loadCatalog, 600);
 
   try {
     if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
