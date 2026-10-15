@@ -1,13 +1,13 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <rect width="512" height="512" fill="#d42b61"/>
-  <path d="M206 132 168 92M306 132l38-40" stroke="#fff" stroke-width="18" stroke-linecap="round"/>
-  <rect x="116" y="132" width="280" height="206" rx="40" fill="#fff"/>
-  <rect x="142" y="158" width="228" height="154" rx="22" fill="#1c1d30"/>
-  <path d="M236 197v76l62-38z" fill="#ff5c8d"/>
-  <g fill="#fff">
-    <rect x="116" y="366" width="62" height="20" rx="6"/>
-    <rect x="189" y="366" width="62" height="20" rx="6"/>
-    <rect x="262" y="366" width="62" height="20" rx="6" opacity=".4"/>
-    <rect x="335" y="366" width="61" height="20" rx="6" opacity=".4"/>
+  <rect width="512" height="512" fill="#121212"/>
+  <path d="M206 132 168 92M306 132l38-40" stroke="#1ed760" stroke-width="18" stroke-linecap="round"/>
+  <rect x="116" y="132" width="280" height="206" rx="40" fill="#1ed760"/>
+  <rect x="142" y="158" width="228" height="154" rx="22" fill="#121212"/>
+  <path d="M236 197v76l62-38z" fill="#ffffff"/>
+  <g fill="#1ed760">
+    <rect x="116" y="366" width="62" height="20" rx="10"/>
+    <rect x="189" y="366" width="62" height="20" rx="10"/>
+    <rect x="262" y="366" width="62" height="20" rx="10" opacity=".35"/>
+    <rect x="335" y="366" width="61" height="20" rx="10" opacity=".35"/>
   </g>
 </svg>

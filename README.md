@@ -72,7 +72,7 @@ python3 scripts/build_catalog.py --update-readings
 | ファイル | 中身 |
 | --- | --- |
 | `index.html` | 画面の構成 |
-| `style.css` | 見た目（ライト／ダークの両方） |
+| `style.css` | 見た目（黒を基調にした、音楽配信アプリ風のデザイン） |
 | `app.js` | 動き（記録の保存、絞り込み、編集など） |
 | `sw.js` | オフライン用のキャッシュ。ファイルを更新したら `CACHE` の番号を上げる |
 | `manifest.webmanifest` | ホーム画面に追加したときの名前やアイコン |

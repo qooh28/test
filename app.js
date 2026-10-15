@@ -5,7 +5,7 @@
   const STORE_KEY = 'anime-log:v1';
   const PREFS_KEY = 'anime-log:prefs';
   const CATALOG_URL = 'catalog.json'; // 配信サービスで見られる作品の一覧（scripts/build_catalog.py で作る）
-  const SEGMENT_LIMIT = 30; // この話数までは1話ずつのコマで表示し、超えたら1本のバーにする
+  const TILE_COLORS = 12; // ジャケット風の四角の色の数（style.css の .c0〜.c11）
   const FIND_PAGE = 60; // 「作品をさがす」で一度に並べる件数
   const SUGGEST_LIMIT = 6;
 
@@ -57,6 +57,7 @@
 
   const $ = (id) => document.getElementById(id);
   const els = {
+    pageTitle: $('page-title'),
     summary: $('summary'),
     modes: $('modes'),
     search: $('search'),
@@ -417,6 +418,9 @@
     els.tabs.hidden = find;
     els.serviceTabs.hidden = !find;
     els.fab.hidden = find;
+    els.summary.hidden = find;
+    els.pageTitle.textContent = find ? '検索' : 'ライブラリ';
+    document.body.dataset.mode = state.mode;
     for (const btn of els.modes.querySelectorAll('[data-mode]')) {
       btn.setAttribute('aria-selected', String(btn.dataset.mode === state.mode));
     }
@@ -489,18 +493,24 @@
     els.emptyAdd.hidden = state.items.length > 0;
   }
 
+  // ジャケット風の四角：題名から色を選び、括弧・記号を除いた最初の1文字を大きく出す
+  function tileHTML(title) {
+    let hash = 0;
+    for (const ch of String(title)) hash = (hash * 31 + ch.codePointAt(0)) >>> 0;
+    const letter = String(title).normalize('NFKC').replace(/[^\p{L}\p{N}]/gu, '');
+    const initial = letter ? [...letter][0].toUpperCase() : '？';
+    return `<div class="tile c${hash % TILE_COLORS}" aria-hidden="true">${esc(initial)}</div>`;
+  }
+
   function progressHTML(item) {
     if (!item.total) return '';
-    if (item.total <= SEGMENT_LIMIT) {
-      return `<div class="frames" aria-hidden="true">${'<i class="on"></i>'.repeat(item.watched)}${'<i></i>'.repeat(item.total - item.watched)}</div>`;
-    }
     return `<progress class="bar" max="${item.total}" value="${item.watched}" aria-hidden="true"></progress>`;
   }
 
   function countHTML(item) {
-    if (item.total) return `<b>${item.watched}</b><span>/ ${item.total}話</span>`;
-    if (item.watched > 0) return `<b>${item.watched}</b><span>話まで視聴</span>`;
-    return item.status === 'done' ? '' : '<span>未視聴</span>';
+    if (item.total) return `<b>${item.watched}</b>/${item.total}話`;
+    if (item.watched > 0) return `<b>${item.watched}</b>話まで`;
+    return item.status === 'done' ? '' : '未視聴';
   }
 
   function starsHTML(rating) {
@@ -526,10 +536,10 @@
 
   function episodeButtonsHTML(item, title) {
     const minus = canMinus(item)
-      ? `<button type="button" class="minus" data-action="minus" aria-label="${title}を1話戻す">−1話</button>`
+      ? `<button type="button" class="minus" data-action="minus" aria-label="${title}を1話戻す">−1</button>`
       : '';
     const plus = canPlus(item)
-      ? `<button type="button" class="plus" data-action="plus" aria-label="${title}を1話進める">＋1話</button>`
+      ? `<button type="button" class="plus" data-action="plus" aria-label="${title}を1話進める">+1</button>`
       : '';
     return minus || plus ? `<div class="ep-btns">${minus}${plus}</div>` : '';
   }
@@ -537,22 +547,25 @@
   function cardHTML(item) {
     const season = seasonLabel(item);
     const title = esc(item.title);
+    const count = countHTML(item);
+    // 2行目：状態 · 話数 · 放送時期 · 星（ある物だけを「·」でつなぐ）
+    const sub = [
+      `<span class="chip">${STATUS[item.status]}</span>`,
+      count ? `<span class="count">${count}</span>` : '',
+      season ? `<span class="season">${season}</span>` : '',
+      starsHTML(item.rating),
+    ].filter(Boolean).join('<span class="sep" aria-hidden="true">·</span>');
     return `<article class="card s-${item.status}" data-id="${esc(item.id)}">
   <button type="button" class="card-hit" data-action="edit" aria-label="${title}を編集"></button>
-  <div class="card-head">
-    <span class="chip">${STATUS[item.status]}</span>
-    ${item.sample ? '<span class="tag">サンプル</span>' : ''}
-    ${season ? `<span class="season">${season}</span>` : ''}
+  ${tileHTML(item.title)}
+  <div class="card-main">
+    <h2 class="card-title">${title}</h2>
+    <p class="card-sub">${item.sample ? '<span class="tag">サンプル</span>' : ''}${sub}</p>
+    ${progressHTML(item)}
+    ${whereHTML(item)}
+    ${item.note ? `<p class="note">${esc(item.note)}</p>` : ''}
   </div>
-  <h2 class="card-title">${title}</h2>
-  ${progressHTML(item)}
-  ${whereHTML(item)}
-  ${item.note ? `<p class="note">${esc(item.note)}</p>` : ''}
-  <div class="card-foot">
-    <span class="count">${countHTML(item)}</span>
-    ${starsHTML(item.rating)}
-    ${episodeButtonsHTML(item, title)}
-  </div>
+  ${episodeButtonsHTML(item, title)}
 </article>`;
   }
 
@@ -634,10 +647,11 @@
         .join('')}</p>`
       : '';
     const action = mine
-      ? `<span class="added">記録済み${mine.rating ? starsHTML(mine.rating) : ''}</span>`
-      : `<button type="button" class="add-btn" data-work="${work.id}" aria-label="${esc(work.title)}を記録に追加">＋ 追加</button>`;
+      ? `<span class="added"><svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><circle cx="12" cy="12" r="11" fill="currentColor"/><path d="m7 12.5 3.2 3L17 8.8" fill="none" stroke="#000" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="sr-only">記録済み</span>${mine.rating ? starsHTML(mine.rating) : ''}</span>`
+      : `<button type="button" class="add-btn" data-work="${work.id}" aria-label="${esc(work.title)}を記録に追加"><svg viewBox="0 0 24 24" width="26" height="26" aria-hidden="true"><circle cx="12" cy="12" r="10.5" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M12 7.5v9M7.5 12h9" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>`;
     const meta = workMeta(work);
     return `<article class="work">
+  ${tileHTML(work.title)}
   <div class="work-main">
     <h3 class="work-title">${esc(work.title)}</h3>
     ${meta ? `<p class="work-meta">${esc(meta)}</p>` : ''}
@@ -762,7 +776,7 @@
     state.mode = mode;
     savePrefs();
     els.search.value = mode === 'find' ? state.find.query : state.query;
-    els.search.placeholder = mode === 'find' ? '作品名で検索（ひらがなでも探せます）' : 'タイトルや感想で検索';
+    els.search.placeholder = mode === 'find' ? '作品名で検索（ひらがなでも探せます）' : 'ライブラリ内を検索';
     if (mode === 'find') loadCatalog();
     render();
     window.scrollTo(0, 0);
