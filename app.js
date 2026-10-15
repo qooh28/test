@@ -6,6 +6,9 @@
   const PREFS_KEY = 'anime-log:prefs';
   const CATALOG_URL = 'catalog.json'; // 配信サービスで見られる作品の一覧（scripts/build_catalog.py で作る）
   const TILE_COLORS = 12; // ジャケット風の四角の色の数（style.css の .c0〜.c11）
+  // ジャケット画像の置き場（AniList）。作品データ・記録には画像のファイル名だけを持つ
+  const COVER_BASE = 'https://s4.anilist.co/file/anilistcdn/media/anime/cover/';
+  const COVER_FILE = /^[\w.-]{1,80}$/;
   const FIND_PAGE = 60; // 「作品をさがす」で一度に並べる件数
   const SUGGEST_LIMIT = 6;
 
@@ -206,6 +209,7 @@
       rating,
       note: String(raw.note ?? '').slice(0, 5000),
       kana: String(raw.kana ?? '').slice(0, 200), // 読みがな（タイトル順に使う）
+      image: COVER_FILE.test(raw.image) ? raw.image : '', // ジャケット画像のファイル名
       sourceId: toSourceId(raw.sourceId),
       sample: raw.sample === true,
       createdAt: Number(raw.createdAt) || now,
@@ -317,21 +321,26 @@
     return catalogPromise;
   }
 
-  // 読みがなのない記録に、作品一覧の読みがなを入れる（作品を選んで登録した記録か、題名が一致する記録）
-  // 記録の読みを、作品一覧の読みにそろえる（作品一覧の読みのほうが整っているので、あれば上書きする）
+  // 記録の読みと画像を、作品一覧のものにそろえる（作品を選んで登録した記録か、題名が一致する記録）。
+  // 読みが変わったら true を返す（タイトル順の並べ直しに使う）
   function fillKana() {
     if (catalog.status !== 'ready') return false;
-    let filled = false;
+    let kanaChanged = false;
+    let changed = false;
     for (const item of state.items) {
       const work = workFor(item);
       const kana = (work && work.kana) || (item.sample && SAMPLE_KANA[item.title]) || '';
       if (kana && item.kana !== kana) {
         item.kana = kana;
-        filled = true;
+        kanaChanged = true;
+      }
+      if (work && work.image && item.image !== work.image) {
+        item.image = work.image;
+        changed = true;
       }
     }
-    if (filled) save();
-    return filled;
+    if (kanaChanged || changed) save();
+    return kanaChanged;
   }
 
   // マイリストをタイトル順で並べるときは、記録の読みをそろえるために作品一覧を読み込む
@@ -359,6 +368,7 @@
         media: MEDIA[w.m] ? w.m : '',
         services: (Array.isArray(w.s) ? w.s : []).filter((i) => services[i]).map((i) => services[i].id),
         popularity: Number(w.p) || 0,
+        image: COVER_FILE.test(w.i) ? w.i : '',
       };
       works.push(work);
     }
@@ -493,14 +503,23 @@
     els.emptyAdd.hidden = state.items.length > 0;
   }
 
-  // ジャケット風の四角：題名から色を選び、括弧・記号を除いた最初の1文字を大きく出す
-  function tileHTML(title) {
+  // ジャケット画像。画像がない・読み込めないときは、題名から選んだ色の四角に最初の1文字を出す
+  // size：ライブラリは 'medium'（230px）、検索の一覧は軽い 'small'（100px）
+  function tileHTML(title, image, size) {
     let hash = 0;
     for (const ch of String(title)) hash = (hash * 31 + ch.codePointAt(0)) >>> 0;
     const letter = String(title).normalize('NFKC').replace(/[^\p{L}\p{N}]/gu, '');
     const initial = letter ? [...letter][0].toUpperCase() : '？';
-    return `<div class="tile c${hash % TILE_COLORS}" aria-hidden="true">${esc(initial)}</div>`;
+    const img = image ? `<img src="${COVER_BASE}${size}/${esc(image)}" alt="" loading="lazy" decoding="async">` : '';
+    return `<div class="tile c${hash % TILE_COLORS}" aria-hidden="true">${esc(initial)}${img}</div>`;
   }
+
+  // 画像が読み込めなかったら外して、下の色の四角を見せる
+  document.addEventListener('error', (e) => {
+    if (e.target instanceof HTMLImageElement && e.target.parentElement && e.target.parentElement.classList.contains('tile')) {
+      e.target.remove();
+    }
+  }, true);
 
   function progressHTML(item) {
     if (!item.total) return '';
@@ -557,7 +576,7 @@
     ].filter(Boolean).join('<span class="sep" aria-hidden="true">·</span>');
     return `<article class="card s-${item.status}" data-id="${esc(item.id)}">
   <button type="button" class="card-hit" data-action="edit" aria-label="${title}を編集"></button>
-  ${tileHTML(item.title)}
+  ${tileHTML(item.title, item.image, 'medium')}
   <div class="card-main">
     <h2 class="card-title">${title}</h2>
     <p class="card-sub">${item.sample ? '<span class="tag">サンプル</span>' : ''}${sub}</p>
@@ -651,7 +670,7 @@
       : `<button type="button" class="add-btn" data-work="${work.id}" aria-label="${esc(work.title)}を記録に追加"><svg viewBox="0 0 24 24" width="26" height="26" aria-hidden="true"><circle cx="12" cy="12" r="10.5" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M12 7.5v9M7.5 12h9" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>`;
     const meta = workMeta(work);
     return `<article class="work">
-  ${tileHTML(work.title)}
+  ${tileHTML(work.title, work.image, 'small')}
   <div class="work-main">
     <h3 class="work-title">${esc(work.title)}</h3>
     ${meta ? `<p class="work-meta">${esc(meta)}</p>` : ''}
@@ -662,7 +681,7 @@
   }
 
   function prefillFromWork(work, status = 'want') {
-    return { title: work.title, kana: work.kana, total: work.total, year: work.year, cour: work.cour, sourceId: work.id, status };
+    return { title: work.title, kana: work.kana, image: work.image, total: work.total, year: work.year, cour: work.cour, sourceId: work.id, status };
   }
 
   /* ---------- toast ---------- */
@@ -863,7 +882,7 @@
     f.title.value = work.title;
     if (work.total) f.total.value = String(work.total);
     setEditorSeason(work);
-    state.picked = work.sourceId ? { id: work.sourceId, title: work.title, kana: work.kana || '' } : null;
+    state.picked = work.sourceId ? { id: work.sourceId, title: work.title, kana: work.kana || '', image: work.image || '' } : null;
   }
 
   function openEditor(id = null, prefill = null) {
@@ -982,9 +1001,11 @@
     let sourceId = existing ? existing.sourceId : null;
     // 読みがなは、選んだ作品のもの。編集で題名を変えたら、古い読みがなは捨てる（作品一覧に同じ題名があれば後で入る）
     let kana = existing && existing.title === title ? existing.kana : '';
+    let image = existing && existing.title === title ? existing.image : '';
     if (state.picked && title === state.picked.title) {
       sourceId = state.picked.id;
       kana = state.picked.kana;
+      image = state.picked.image;
     }
     const data = {
       title: title.slice(0, 200),
@@ -996,6 +1017,7 @@
       rating: state.rating,
       note: f.note.value.trim().slice(0, 5000),
       kana,
+      image,
       sourceId,
       sample: false,
     };
@@ -1139,6 +1161,8 @@
   load();
   setMode(state.mode);
   if (needKana()) loadCatalog();
+  // 画像のない記録があれば、画面を出した後で作品一覧を読み込んで画像をそろえる
+  else if (state.items.some((it) => !it.image)) setTimeout(loadCatalog, 1500);
 
   try {
     if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});

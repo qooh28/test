@@ -288,6 +288,8 @@ body[data-mode="find"] .search-icon { color: #121212; }
 
 /* ---------- ジャケット風の四角 ---------- */
 .tile {
+  position: relative;
+  overflow: hidden;
   display: grid;
   place-items: center;
   width: 56px;
@@ -302,6 +304,14 @@ body[data-mode="find"] .search-icon { color: #121212; }
   line-height: 1;
   box-shadow: 0 4px 12px rgb(0 0 0 / 35%);
   user-select: none;
+}
+/* ジャケット画像は四角いっぱいに、中央を切り抜いて表示 */
+.tile img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 .c0 { --tc: var(--t0); } .c1 { --tc: var(--t1); } .c2 { --tc: var(--t2); } .c3 { --tc: var(--t3); }
 .c4 { --tc: var(--t4); } .c5 { --tc: var(--t5); } .c6 { --tc: var(--t6); } .c7 { --tc: var(--t7); }

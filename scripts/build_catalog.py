@@ -62,7 +62,19 @@ STREAMING_GROUPS = {"動画サービス", "ABEMA"}
 MEDIA = {"TV": "tv", "MOVIE": "movie", "OVA": "ova", "WEB": "web", "OTHER": "other"}
 SEASON = {"WINTER": "winter", "SPRING": "spring", "SUMMER": "summer", "AUTUMN": "fall"}
 
-WORK_FIELDS = "annictId title titleKana titleEn media seasonName seasonYear episodesCount watchersCount"
+WORK_FIELDS = "annictId title titleKana titleEn media seasonName seasonYear episodesCount watchersCount malAnimeId"
+
+# ジャケット画像：Annict の作品に入っている MyAnimeList の番号で AniList の作品を探し、その画像を使う。
+# catalog.json には画像のファイル名だけを入れ、アプリが AniList の画像置き場から読み込む。
+ANILIST_API = "https://graphql.anilist.co"
+ANILIST_WAIT_SECONDS = 2.1  # AniList は1分に30回まで
+COVERS_QUERY = """
+query ($ids: [Int]) {
+  Page(perPage: 50) {
+    media(idMal_in: $ids, type: ANIME) { idMal coverImage { large } }
+  }
+}
+"""
 
 ALL_WORKS_QUERY = """
 query ($after: String) {
@@ -207,7 +219,43 @@ def fetch_all_works():
     return works
 
 
-def to_entry(work, services):
+def fetch_covers(mal_ids):
+    """MyAnimeList の番号 → AniList の画像ファイル名（例：bx154587-qQTzQnEJJ3oB.jpg）"""
+    ids = sorted(set(mal_ids))
+    covers = {}
+    for start in range(0, len(ids), 50):
+        body = json.dumps({"query": COVERS_QUERY, "variables": {"ids": ids[start:start + 50]}}).encode()
+        headers = {"Content-Type": "application/json", "Accept": "application/json", "User-Agent": "anime-log-catalog/1.0"}
+        for attempt in range(6):
+            req = urllib.request.Request(ANILIST_API, data=body, headers=headers, method="POST")
+            try:
+                with urllib.request.urlopen(req, timeout=60) as res:
+                    data = json.load(res)
+                break
+            except urllib.error.HTTPError as err:
+                if err.code in (429, 500, 502, 503, 504) and attempt < 5:
+                    time.sleep(int(err.headers.get("Retry-After") or 0) + 5 * (attempt + 1))
+                    continue
+                raise
+        for media in data["data"]["Page"]["media"]:
+            url = (media.get("coverImage") or {}).get("large") or ""
+            name = url.rsplit("/", 1)[-1]
+            if media.get("idMal") and name and not name.startswith("default"):
+                covers[media["idMal"]] = name
+        print(f"\r画像を探しています（{min(start + 50, len(ids))}/{len(ids)}）", end="", file=sys.stderr, flush=True)
+        time.sleep(ANILIST_WAIT_SECONDS)
+    print(file=sys.stderr)
+    return covers
+
+
+def mal_id(work):
+    try:
+        return int(work.get("malAnimeId") or 0) or None
+    except ValueError:
+        return None
+
+
+def to_entry(work, services, covers=None):
     entry = {"id": work["annictId"], "t": work["title"].strip()}
     if work.get("titleKana"):
         entry["k"] = work["titleKana"].strip()
@@ -226,6 +274,8 @@ def to_entry(work, services):
         entry["m"] = MEDIA[work["media"]]
     if services:
         entry["s"] = sorted(services)
+    if covers and mal_id(work) in covers:
+        entry["i"] = covers[mal_id(work)]
     entry["p"] = work.get("watchersCount") or 0
     return entry
 
@@ -257,7 +307,11 @@ def write_catalog(entries, services, out_path, generated_at=None):
 
 
 def build_titles(out_path):
-    entries = [to_entry(w, ()) for w in fetch_all_works() if (w.get("title") or "").strip()]
+    works = [w for w in fetch_all_works() if (w.get("title") or "").strip()]
+    covers = fetch_covers(m for m in map(mal_id, works) if m)
+    entries = [to_entry(w, (), covers) for w in works]
+    with_image = sum(1 for e in entries if "i" in e)
+    print(f"ジャケット画像：{with_image}/{len(entries)}作品", file=sys.stderr)
     write_catalog(entries, [], out_path)
 
 
