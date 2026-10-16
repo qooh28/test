@@ -60,13 +60,18 @@ python3 scripts/build_catalog.py --update-readings
 
 ## 公開のしかた（GitHub Pages）
 
-1. GitHub でこのリポジトリの **Settings → Pages** を開く
-2. **Source** を「Deploy from a branch」にする
-3. **Branch** で `master` と `/ (root)` を選び、Save を押す
-4. 数分後に `https://<ユーザー名>.github.io/<リポジトリ名>/` で開けるようになる
+公開中の URL：https://qooh28.github.io/test/
 
-非公開（private）のリポジトリで GitHub Pages を使うには、GitHub の有料プランが必要です。
-無料プランの場合は、リポジトリを公開（public）にしてから設定してください。
+`gh-pages` ブランチの中身が公開されます（`gh-pages` ブランチを作ると、GitHub が自動で Pages を有効にした）。
+`master` を更新したら、公開にも反映するために `gh-pages` にも送ります。
+
+```sh
+git push origin master
+git push origin master:gh-pages   # 1〜2分で公開中のサイトに反映される
+```
+
+- 無料プランでは、リポジトリが公開（public）のときだけ GitHub Pages を使えます。非公開に戻すと、サイトは止まります。
+- 画面で設定する場合は、**Settings → Pages** の **Branch** で公開するブランチを選びます。
 
 ## iPhone のホーム画面に追加する
 
