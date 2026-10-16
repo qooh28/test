@@ -4,6 +4,11 @@
 
   const STORE_KEY = 'anime-log:v1';
   const PREFS_KEY = 'anime-log:prefs';
+  const PROFILE_KEY = 'anime-log:profile'; // アカウント（名前と写真）。今はこの端末の中だけ
+  const AVATAR_SIZE = 256; // 写真は正方形に切り抜いて、この大きさ（px）の JPEG にして保存する
+  const AVATAR_DATA = /^data:image\/(?:jpeg|png|webp);base64,[A-Za-z0-9+/]+=*$/;
+  const AVATAR_MAX = 400000; // 保存する写真の上限（文字数）。256px の JPEG なら 20〜60KB ほど
+  const NAME_MAX = 30;
   const CATALOG_URL = 'catalog.json'; // 配信サービスで見られる作品の一覧（scripts/build_catalog.py で作る）
   const TILE_COLORS = 12; // ジャケット風の四角の色の数（style.css の .c0〜.c11）
   // ジャケット画像の置き場（AniList）。作品データ・記録には画像のファイル名だけを持つ
@@ -17,6 +22,18 @@
   const COUR_RANK = { winter: 1, spring: 2, summer: 3, fall: 4 };
   const MEDIA = { tv: 'TV', movie: '劇場版', ova: 'OVA', web: '配信', other: 'その他' };
   const TABS = ['all', 'watching', 'want', 'done', 'dropped'];
+  const MODES = { mine: 'ライブラリ', find: '検索', account: 'アカウント' };
+
+  // ランク。数えるのは「見終わった」と「視聴中」の作品（サンプルは数えない）。
+  // 名前と必要な数は仮。本人が決めたら、ここだけ書き換える（色は style.css の --rank-<id>）
+  const RANKS = [
+    { id: 'bronze', name: 'ブロンズ', min: 1 },
+    { id: 'silver', name: 'シルバー', min: 30 },
+    { id: 'gold', name: 'ゴールド', min: 100 },
+    { id: 'platinum', name: 'プラチナ', min: 300 },
+    { id: 'diamond', name: 'ダイヤモンド', min: 1000 },
+  ];
+  const RANKED_STATUS = ['done', 'watching'];
 
   const collator = new Intl.Collator('ja');
   const SORTS = {
@@ -114,6 +131,29 @@
     menu: $('menu'),
     menuSamples: $('menu-samples'),
     importFile: $('import-file'),
+    searchBox: document.querySelector('.search'),
+    avatarBtn: $('avatar-btn'),
+    navAvatar: $('nav-avatar'),
+    accountView: $('account-view'),
+    heroAvatar: $('hero-avatar'),
+    profileName: $('profile-name'),
+    profileMeta: $('profile-meta'),
+    editProfile: $('edit-profile'),
+    rankCard: $('rank-card'),
+    rankTitle: $('rank-title'),
+    rankCount: $('rank-count'),
+    rankBar: $('rank-bar'),
+    rankNext: $('rank-next'),
+    rankLadder: $('rank-ladder'),
+    rankSampleHint: $('rank-sample-hint'),
+    stats: $('stats'),
+    profileEditor: $('profile-editor'),
+    profileForm: $('profile-form'),
+    pAvatar: $('p-avatar'),
+    pPhoto: $('p-photo'),
+    pPhotoRemove: $('p-photo-remove'),
+    pPhotoError: $('p-photo-error'),
+    pName: $('p-name'),
   };
   const f = {
     title: $('f-title'),
@@ -124,8 +164,10 @@
   };
 
   const state = {
-    mode: 'mine', // mine = マイリスト, find = 作品をさがす
+    mode: 'mine', // mine = ライブラリ, find = 検索, account = アカウント
     items: [],
+    profile: null, // { name, avatar, createdAt, updatedAt }
+    draftAvatar: '', // プロフィール編集中の写真（保存するまで反映しない）
     tab: 'all',
     query: '',
     sort: 'updated',
@@ -236,6 +278,18 @@
     ].map(({ ago, ...s }) => normalize({ ...s, kana: SAMPLE_KANA[s.title], image: SAMPLE_IMAGES[s.title], id: newId(), sample: true, createdAt: now - ago * hour, updatedAt: now - ago * hour }));
   }
 
+  function normalizeProfile(raw) {
+    const now = Date.now();
+    const p = raw && typeof raw === 'object' ? raw : {};
+    const avatar = typeof p.avatar === 'string' && p.avatar.length <= AVATAR_MAX && AVATAR_DATA.test(p.avatar) ? p.avatar : '';
+    return {
+      name: String(p.name ?? '').replace(/\s+/g, ' ').trim().slice(0, NAME_MAX),
+      avatar,
+      createdAt: Number(p.createdAt) || now,
+      updatedAt: Number(p.updatedAt) || 0, // 0 = まだ設定していない
+    };
+  }
+
   /* ---------- storage ---------- */
   function readJSON(key) {
     try {
@@ -264,9 +318,10 @@
       state.items = makeSamples();
       save();
     }
+    state.profile = normalizeProfile(readJSON(PROFILE_KEY));
     const prefs = readJSON(PREFS_KEY);
     if (prefs) {
-      if (prefs.mode === 'mine' || prefs.mode === 'find') state.mode = prefs.mode;
+      if (MODES[prefs.mode]) state.mode = prefs.mode;
       if (TABS.includes(prefs.tab)) state.tab = prefs.tab;
       if (SORTS[prefs.sort]) state.sort = prefs.sort;
       if (typeof prefs.service === 'string') state.find.service = prefs.service;
@@ -280,6 +335,10 @@
     const ok = writeJSON(STORE_KEY, { version: 1, items: state.items });
     els.storageWarn.hidden = ok;
     return ok;
+  }
+
+  function saveProfile() {
+    return writeJSON(PROFILE_KEY, { version: 1, ...state.profile });
   }
 
   function savePrefs() {
@@ -427,23 +486,34 @@
 
   /* ---------- render ---------- */
   function render(options = {}) {
+    const mine = state.mode === 'mine';
     const find = state.mode === 'find';
-    els.mineView.hidden = find;
+    const account = state.mode === 'account';
+    els.mineView.hidden = !mine;
     els.findView.hidden = !find;
+    els.accountView.hidden = !account;
     // 作品データに配信サービスの情報がないときは、サービスの絞り込みを出さない
     const hasServices = catalog.status === 'ready' && catalog.services.length > 0;
-    els.tabbar.hidden = find && !hasServices;
-    els.tabs.hidden = find;
+    els.tabbar.hidden = account || (find && !hasServices);
+    els.tabs.hidden = !mine;
     els.serviceTabs.hidden = !find;
-    els.fab.hidden = find;
-    els.summary.hidden = find;
-    els.pageTitle.textContent = find ? '検索' : 'ライブラリ';
+    els.fab.hidden = !mine;
+    els.summary.hidden = !mine;
+    els.searchBox.hidden = account;
+    els.avatarBtn.hidden = account;
+    els.pageTitle.textContent = MODES[state.mode];
     document.body.dataset.mode = state.mode;
     for (const btn of els.modes.querySelectorAll('[data-mode]')) {
       btn.setAttribute('aria-selected', String(btn.dataset.mode === state.mode));
     }
+    const rank = currentRank();
+    document.body.dataset.rank = rank.current ? rank.current.id : 'none';
+    paintAvatar(els.avatarBtn, state.profile, rank.current);
+    paintAvatar(els.navAvatar, state.profile, null);
+    els.avatarBtn.setAttribute('aria-label', state.profile.name ? `アカウント（${state.profile.name}）` : 'アカウント');
     renderSummary();
     if (find) renderFind();
+    else if (account) renderAccount(rank);
     else renderMine(options);
   }
 
@@ -692,6 +762,191 @@
     return { title: work.title, kana: work.kana, image: work.image, total: work.total, year: work.year, cour: work.cour, sourceId: work.id, status };
   }
 
+  /* ---------- account (アカウント) ---------- */
+  const PERSON_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8.5" r="4" fill="currentColor"/><path d="M4.5 20.5c.8-4 3.8-6.5 7.5-6.5s6.7 2.5 7.5 6.5" fill="currentColor"/></svg>';
+
+  function ownItems() {
+    return state.items.filter((it) => !it.sample);
+  }
+
+  function rankFor(count) {
+    let index = -1;
+    RANKS.forEach((r, i) => {
+      if (count >= r.min) index = i;
+    });
+    return { count, current: RANKS[index] || null, next: RANKS[index + 1] || null };
+  }
+
+  function currentRank() {
+    return rankFor(ownItems().filter((it) => RANKED_STATUS.includes(it.status)).length);
+  }
+
+  // 丸いアイコン：写真 → 名前の最初の1文字 → 人の形、の順に出す。rank を渡すとランクの色の輪を付ける
+  function paintAvatar(el, profile, rank, avatar = profile.avatar) {
+    let face;
+    if (avatar) {
+      face = `<span class="face"><img src="${esc(avatar)}" alt=""></span>`;
+    } else {
+      const letter = profile.name.normalize('NFKC').replace(/[^\p{L}\p{N}]/gu, '');
+      if (letter) {
+        let hash = 0;
+        for (const ch of profile.name) hash = (hash * 31 + ch.codePointAt(0)) >>> 0;
+        face = `<span class="face c${hash % TILE_COLORS}">${esc([...letter][0].toUpperCase())}</span>`;
+      } else {
+        face = `<span class="face blank">${PERSON_SVG}</span>`;
+      }
+    }
+    el.innerHTML = face;
+    el.classList.toggle('ringed', !!rank);
+    el.dataset.rank = rank ? rank.id : '';
+  }
+
+  function renderAccount(rank) {
+    const p = state.profile;
+    const own = ownItems();
+    const n = (v) => v.toLocaleString('ja-JP');
+
+    paintAvatar(els.heroAvatar, p, rank.current);
+    els.profileName.textContent = p.name || '名前が未設定です';
+    els.profileName.classList.toggle('unset', !p.name);
+    els.profileMeta.textContent = `視聴した作品 ${n(rank.count)} · ${rank.current ? rank.current.name : 'ランクなし'}`;
+    const isSet = Boolean(p.name || p.avatar);
+    els.editProfile.textContent = isSet ? 'プロフィールを編集' : 'プロフィールを設定';
+    els.editProfile.classList.toggle('primary', !isSet);
+
+    els.rankCard.dataset.rank = rank.current ? rank.current.id : 'none';
+    els.rankTitle.textContent = rank.current ? rank.current.name : 'ランクなし';
+    els.rankCount.textContent = n(rank.count);
+    const base = rank.current ? rank.current.min : 0;
+    if (rank.next) {
+      els.rankBar.max = rank.next.min - base;
+      els.rankBar.value = rank.count - base;
+      els.rankNext.textContent = rank.current
+        ? `${rank.next.name}まで あと${n(rank.next.min - rank.count)}作品`
+        : `${n(rank.next.min)}作品で${rank.next.name}になります`;
+    } else {
+      els.rankBar.max = 1;
+      els.rankBar.value = 1;
+      els.rankNext.textContent = 'いちばん上のランクです';
+    }
+    els.rankLadder.innerHTML = RANKS.map((r) => {
+      const reached = rank.count >= r.min;
+      const now = rank.current === r;
+      return `<li data-rank="${r.id}"${reached ? ' class="reached"' : ''}${now ? ' aria-current="true"' : ''}>
+  <i aria-hidden="true"></i><span class="ln">${esc(r.name)}</span><span class="lm">${n(r.min)}作品〜</span>${now ? '<span class="now">いまここ</span>' : ''}
+</li>`;
+    }).join('');
+    els.rankSampleHint.hidden = own.length === state.items.length;
+
+    const counts = { done: 0, watching: 0, want: 0, dropped: 0 };
+    let episodes = 0;
+    let rated = 0;
+    let stars = 0;
+    for (const it of own) {
+      counts[it.status] += 1;
+      episodes += it.watched;
+      if (it.rating) {
+        rated += 1;
+        stars += it.rating;
+      }
+    }
+    const stats = [
+      ['見終わった', n(counts.done)],
+      ['視聴中', n(counts.watching)],
+      ['見たい', n(counts.want)],
+      ['中断', n(counts.dropped)],
+      ['見た話数', n(episodes)],
+      ['平均の星', rated ? (stars / rated).toFixed(1) : '—'],
+    ];
+    els.stats.innerHTML = stats.map(([label, value]) => `<div class="stat"><dt>${label}</dt><dd>${value}</dd></div>`).join('');
+  }
+
+  /* ---------- profile editor ---------- */
+  // 写真を中央で正方形に切り抜き、AVATAR_SIZE の JPEG（data URL）にする。写真は端末の外に出さない
+  async function photoToAvatar(file) {
+    const url = URL.createObjectURL(file);
+    try {
+      const img = await new Promise((resolve, reject) => {
+        const image = new Image();
+        image.onload = () => resolve(image);
+        image.onerror = () => reject(new Error('decode'));
+        image.src = url;
+      });
+      const side = Math.min(img.naturalWidth, img.naturalHeight);
+      if (!side) throw new Error('size');
+      const canvas = document.createElement('canvas');
+      canvas.width = AVATAR_SIZE;
+      canvas.height = AVATAR_SIZE;
+      const ctx = canvas.getContext('2d');
+      ctx.imageSmoothingQuality = 'high';
+      ctx.fillStyle = '#121212'; // 透明な部分がある画像は、黒地にのせる
+      ctx.fillRect(0, 0, AVATAR_SIZE, AVATAR_SIZE);
+      ctx.drawImage(img, (img.naturalWidth - side) / 2, (img.naturalHeight - side) / 2, side, side, 0, 0, AVATAR_SIZE, AVATAR_SIZE);
+      return canvas.toDataURL('image/jpeg', 0.85);
+    } finally {
+      URL.revokeObjectURL(url);
+    }
+  }
+
+  function paintDraft() {
+    paintAvatar(els.pAvatar, { name: els.pName.value, avatar: state.draftAvatar }, null, state.draftAvatar);
+    els.pPhotoRemove.hidden = !state.draftAvatar;
+  }
+
+  function openProfileEditor() {
+    state.draftAvatar = state.profile.avatar;
+    els.pName.value = state.profile.name;
+    els.pPhotoError.hidden = true;
+    paintDraft();
+    els.profileEditor.showModal();
+    if (!state.profile.name) els.pName.focus();
+  }
+
+  els.pPhoto.addEventListener('change', async () => {
+    const file = els.pPhoto.files && els.pPhoto.files[0];
+    els.pPhoto.value = '';
+    if (!file) return;
+    els.pPhotoError.hidden = true;
+    try {
+      if (file.type && !file.type.startsWith('image/')) throw new Error('type');
+      const avatar = await photoToAvatar(file);
+      if (avatar.length > AVATAR_MAX || !AVATAR_DATA.test(avatar)) throw new Error('size');
+      state.draftAvatar = avatar;
+      paintDraft();
+    } catch {
+      els.pPhotoError.textContent = 'この写真は読み込めませんでした。別の写真を選んでください。';
+      els.pPhotoError.hidden = false;
+    }
+  });
+
+  els.pPhotoRemove.addEventListener('click', () => {
+    state.draftAvatar = '';
+    paintDraft();
+  });
+
+  els.pName.addEventListener('input', () => {
+    if (!state.draftAvatar) paintDraft();
+  });
+
+  els.profileForm.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const before = state.profile;
+    state.profile = normalizeProfile({ ...before, name: els.pName.value, avatar: state.draftAvatar, updatedAt: Date.now() });
+    if (!saveProfile()) {
+      state.profile = before;
+      els.pPhotoError.textContent = '保存できませんでした。端末の空き容量を確かめるか、写真を外して保存してください。';
+      els.pPhotoError.hidden = false;
+      return;
+    }
+    els.profileEditor.close();
+    render();
+    toast('プロフィールを保存しました');
+  });
+
+  els.avatarBtn.addEventListener('click', () => setMode('account'));
+  els.heroAvatar.addEventListener('click', openProfileEditor);
+  els.editProfile.addEventListener('click', openProfileEditor);
+
   /* ---------- toast ---------- */
   let toastTimer = 0;
   let toastRun = null;
@@ -799,7 +1054,7 @@
 
   /* ---------- mode switch & find actions ---------- */
   function setMode(mode) {
-    if (mode !== 'mine' && mode !== 'find') return;
+    if (!MODES[mode]) return;
     state.mode = mode;
     savePrefs();
     els.search.value = mode === 'find' ? state.find.query : state.query;
@@ -1072,7 +1327,7 @@
   });
 
   /* ---------- dialogs ---------- */
-  for (const dialog of [els.editor, els.menu]) {
+  for (const dialog of [els.editor, els.menu, els.profileEditor]) {
     dialog.addEventListener('click', (e) => {
       if (e.target === dialog) dialog.close(); // 背景をタップしたら閉じる
       if (e.target.closest('[data-close]')) dialog.close();
@@ -1112,7 +1367,7 @@
   }
 
   $('export').addEventListener('click', async () => {
-    const payload = { app: 'anime-log', version: 1, exportedAt: new Date().toISOString(), items: state.items };
+    const payload = { app: 'anime-log', version: 1, exportedAt: new Date().toISOString(), profile: state.profile, items: state.items };
     const name = `anime-log-${dateStamp()}.json`;
     const file = new File([JSON.stringify(payload, null, 2)], name, { type: 'application/json' });
 
@@ -1157,9 +1412,19 @@
           updated += 1;
         }
       }
+      // プロフィールは、バックアップのほうが新しく設定したものなら置き換える
+      let profileNote = '';
+      if (data && data.profile) {
+        const incoming = normalizeProfile(data.profile);
+        if (incoming.updatedAt > state.profile.updatedAt && (incoming.name || incoming.avatar)) {
+          state.profile = incoming;
+          saveProfile();
+          profileNote = '、プロフィールも読み込みました';
+        }
+      }
       els.menu.close();
       commit();
-      toast(`${added}件を追加し、${updated}件を更新しました`);
+      toast(`${added}件を追加し、${updated}件を更新しました${profileNote}`);
     } catch {
       toast('読み込めませんでした。このアプリで書き出したバックアップ（.json）を選んでください');
     }

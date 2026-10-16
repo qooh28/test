@@ -25,6 +25,13 @@
   --scrim: rgb(0 0 0 / 70%);
   --glow: rgb(30 215 96 / 16%);
 
+  /* ランクの色 */
+  --rank-bronze: #d08a4e;
+  --rank-silver: #c9ced6;
+  --rank-gold: #f0c03a;
+  --rank-platinum: #8fe0d8;
+  --rank-diamond: #82c3ff;
+
   /* ジャケット風の四角の色（作品ごとに題名から選ぶ） */
   --t0: #e8115b; --t1: #8d67ab; --t2: #1e3264; --t3: #ba5d07; --t4: #27856a; --t5: #509bf5;
   --t6: #e13300; --t7: #148a08; --t8: #dc148c; --t9: #477d95; --t10: #af2896; --t11: #0d73ec;
@@ -95,16 +102,49 @@ button { cursor: pointer; -webkit-tap-highlight-color: transparent; }
   gap: 12px;
   min-width: 0;
 }
+/* 丸いアイコン（自分の写真）。.face が中身、.ringed でランクの色の輪を付ける */
 .avatar {
+  --size: 36px;
+  display: block;
+  flex: none;
+  width: var(--size);
+  height: var(--size);
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  color: var(--text);
+  font-size: calc(var(--size) * 0.42);
+  font-weight: 800;
+  line-height: 1;
+}
+.avatar.ringed { padding: 2px; border: 2px solid var(--rk, var(--field)); }
+.avatar.xl { --size: 132px; }
+.avatar.xl.ringed { padding: 4px; border-width: 4px; }
+.face {
   display: grid;
   place-items: center;
-  flex: none;
-  width: 34px;
-  height: 34px;
+  width: 100%;
+  height: 100%;
   border-radius: 50%;
-  background: var(--accent);
-  color: var(--on-accent);
+  overflow: hidden;
+  background: var(--field);
+  color: var(--text);
+  user-select: none;
 }
+.face[class*=" c"] { background: var(--tc); color: #fff; }
+.face.blank { color: var(--sub); }
+.face svg { width: 62%; height: 62%; margin-top: 12%; }
+.face img { width: 100%; height: 100%; object-fit: cover; }
+button.avatar:active .face { filter: brightness(0.85); }
+
+/* ランクの色（app.js の RANKS の id と合わせる） */
+[data-rank="bronze"] { --rk: var(--rank-bronze); }
+[data-rank="silver"] { --rk: var(--rank-silver); }
+[data-rank="gold"] { --rk: var(--rank-gold); }
+[data-rank="platinum"] { --rk: var(--rank-platinum); }
+[data-rank="diamond"] { --rk: var(--rank-diamond); }
+[data-rank="none"] { --rk: var(--field); }
 .title-row h1 {
   flex: 1;
   min-width: 0;
@@ -531,6 +571,161 @@ body[data-mode="find"] .search-icon { color: #121212; }
 }
 .credit a { color: var(--sub); }
 
+/* ---------- アカウント ---------- */
+/* 画面上の光を、今のランクの色にする */
+body[data-mode="account"][data-rank="bronze"] { --glow: rgb(208 138 78 / 24%); }
+body[data-mode="account"][data-rank="silver"] { --glow: rgb(201 206 214 / 18%); }
+body[data-mode="account"][data-rank="gold"] { --glow: rgb(240 192 58 / 22%); }
+body[data-mode="account"][data-rank="platinum"] { --glow: rgb(143 224 216 / 20%); }
+body[data-mode="account"][data-rank="diamond"] { --glow: rgb(130 195 255 / 22%); }
+
+.account { gap: 24px; }
+.profile-hero {
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  padding-block: 4px 0;
+  text-align: center;
+}
+.profile-hero .avatar.xl { margin-bottom: 8px; box-shadow: 0 8px 28px rgb(0 0 0 / 45%); border-radius: 50%; }
+.profile-name {
+  margin: 0;
+  max-width: 100%;
+  font-size: 30px;
+  font-weight: 800;
+  line-height: 1.2;
+  letter-spacing: -0.01em;
+  overflow-wrap: anywhere;
+  text-wrap: balance;
+}
+.profile-name.unset { color: var(--sub); font-size: 22px; }
+.profile-meta {
+  margin: 0;
+  color: var(--sub);
+  font-size: var(--fs-sm);
+  font-variant-numeric: tabular-nums;
+}
+.profile-hero .pill-btn { margin-top: 10px; }
+.pill-btn.primary { border-color: var(--accent); background: var(--accent); color: var(--on-accent); }
+
+.eyebrow {
+  margin: 0;
+  color: var(--sub);
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+.rank-card {
+  display: grid;
+  gap: 10px;
+  padding: 16px;
+  border-radius: 8px;
+  background: var(--bg-elev);
+}
+.rank-head {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+}
+.medal {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 34% 28%, rgb(255 255 255 / 55%) 0 14%, rgb(255 255 255 / 0) 34%),
+    var(--rk);
+  box-shadow: inset 0 -3px 0 rgb(0 0 0 / 22%);
+}
+.rank-name h3 { margin: 0; font-size: 22px; font-weight: 800; line-height: 1.2; }
+.rank-count {
+  margin: 0;
+  color: var(--sub);
+  font-size: var(--fs-sm);
+  font-variant-numeric: tabular-nums;
+}
+.rank-count b { color: var(--text); font-size: 22px; font-weight: 800; margin-right: 2px; }
+.rank-bar {
+  display: block;
+  width: 100%;
+  height: 6px;
+  border: 0;
+  border-radius: 3px;
+  overflow: hidden;
+  background: var(--track);
+  -webkit-appearance: none;
+  appearance: none;
+}
+.rank-bar::-webkit-progress-bar { background: var(--track); border-radius: 3px; }
+.rank-bar::-webkit-progress-value { background: var(--text); border-radius: 3px; }
+.rank-bar::-moz-progress-bar { background: var(--text); border-radius: 3px; }
+.rank-next { margin: 0; font-size: var(--fs-sm); font-weight: 700; font-variant-numeric: tabular-nums; }
+.ladder {
+  display: grid;
+  gap: 2px;
+  margin: 4px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.ladder li {
+  display: grid;
+  grid-template-columns: 12px minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 10px;
+  border-radius: 6px;
+  color: var(--dim);
+  font-size: var(--fs-sm);
+  font-variant-numeric: tabular-nums;
+}
+.ladder i { width: 12px; height: 12px; border-radius: 50%; border: 2px solid var(--rk); }
+.ladder li.reached { color: var(--sub); }
+.ladder li.reached i { background: var(--rk); }
+.ladder li[aria-current] { background: var(--line); color: var(--text); font-weight: 700; }
+.ladder .ln { overflow-wrap: anywhere; }
+.ladder .now {
+  padding: 0 7px;
+  border-radius: 500px;
+  background: var(--rk);
+  color: #121212;
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1.8;
+}
+.rank-card .hint, .photo-field .hint { margin: 0; color: var(--dim); font-size: var(--fs-xs); }
+
+.stats-sec { display: grid; gap: 10px; }
+.sec-title { margin: 0; font-size: 20px; font-weight: 800; }
+.stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 140px), 1fr));
+  gap: 8px;
+  margin: 0;
+}
+.stat {
+  display: grid;
+  gap: 2px;
+  padding: 12px 14px;
+  border-radius: 8px;
+  background: var(--bg-elev);
+}
+.stat dt { color: var(--sub); font-size: var(--fs-sm); }
+.stat dd {
+  order: -1;
+  margin: 0;
+  font-size: 24px;
+  font-weight: 800;
+  line-height: 1.2;
+  font-variant-numeric: tabular-nums;
+}
+.account-note { margin: 0; color: var(--dim); font-size: var(--fs-xs); max-width: 40em; }
+
+/* プロフィール編集 */
+.photo-field { display: grid; justify-items: center; gap: 12px; text-align: center; }
+.photo-actions { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 8px 16px; }
+.photo-actions .btn { cursor: pointer; }
+.photo-field .error { max-width: 28em; }
+
 /* ---------- empty state ---------- */
 .empty {
   display: grid;
@@ -589,9 +784,12 @@ body[data-mode="find"] .search-icon { color: #121212; }
 }
 .bottom-inner {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   padding-block: 18px 6px;
 }
+/* 下のタブのアカウントは、自分の写真を小さく出す。選んでいるときは白い輪 */
+.nav-avatar { --size: 26px; padding: 1px; border: 1.5px solid transparent; }
+.bottom-inner button[aria-selected="true"] .nav-avatar { border-color: var(--text); }
 .bottom-inner button {
   display: grid;
   justify-items: center;
