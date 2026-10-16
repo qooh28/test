@@ -203,6 +203,41 @@
   const ESC = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
   const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ESC[c]);
 
+  // 中身が変わったときだけ入れ替える。画面を切り替えるたびに作り直すと、
+  // ジャケット画像や写真が読み込み直しになり、一瞬ちらつくため
+  const shownHTML = new WeakMap();
+  function setHTML(el, html) {
+    if (shownHTML.get(el) === html) return;
+    shownHTML.set(el, html);
+    el.innerHTML = html;
+  }
+
+  // 一覧用：行ごとに比べて、変わった行だけ作り直す（同じ行は要素ごと残すので、画像を読み込み直さない）
+  const shownRows = new WeakMap();
+  const rowTemplate = document.createElement('template');
+  function setRows(el, rows) {
+    const prev = shownRows.get(el) || new Map();
+    const prevById = new Map([...el.children].filter((n) => n.dataset.id).map((n) => [n.dataset.id, n]));
+    const next = new Map();
+    const nodes = rows.map((html) => {
+      let node = prev.get(html);
+      if (!node || next.has(html)) {
+        rowTemplate.innerHTML = html;
+        node = rowTemplate.content.firstElementChild;
+        // 中身が変わった行（＋1話など）も、同じジャケット画像は読み込み済みの要素を使い回す
+        const old = node.dataset.id && prevById.get(node.dataset.id);
+        const oldImg = old && old.querySelector('.tile img');
+        const newImg = node.querySelector('.tile img');
+        if (oldImg && newImg && oldImg.getAttribute('src') === newImg.getAttribute('src')) newImg.replaceWith(oldImg);
+      }
+      next.set(html, node);
+      return node;
+    });
+    shownRows.set(el, next);
+    if (nodes.length === el.children.length && nodes.every((node, i) => el.children[i] === node)) return;
+    el.replaceChildren(...nodes);
+  }
+
   function newId() {
     if (window.crypto && typeof crypto.randomUUID === 'function') return crypto.randomUUID();
     return Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
@@ -538,7 +573,7 @@
       state.order = visible.map((it) => it.id);
     }
 
-    els.list.innerHTML = visible.map(cardHTML).join('');
+    setRows(els.list, visible.map(cardHTML));
     els.resultCount.textContent = `${visible.length}件`;
     renderEmpty(visible.length);
 
@@ -733,7 +768,7 @@
     els.findToolbar.hidden = false;
     els.findCount.textContent = `${list.length.toLocaleString('ja-JP')}作品`;
     els.works.hidden = shown.length === 0;
-    els.works.innerHTML = shown.map((w) => workHTML(w, recorded.get(w.id))).join('');
+    setRows(els.works, shown.map((w) => workHTML(w, recorded.get(w.id))));
     els.findMore.hidden = list.length <= shown.length;
     els.findMore.textContent = `もっと見る（残り${(list.length - shown.length).toLocaleString('ja-JP')}作品）`;
     els.findEmpty.hidden = list.length > 0;
@@ -831,7 +866,7 @@
         face = `<span class="face blank">${PERSON_SVG}</span>`;
       }
     }
-    el.innerHTML = face;
+    setHTML(el, face);
     el.classList.toggle('ringed', !!rank);
     el.dataset.rank = rank ? rank.id : '';
   }

@@ -358,6 +358,9 @@ body[data-mode="find"] .search-icon { color: #121212; }
   box-shadow: 0 4px 12px rgb(0 0 0 / 35%);
   user-select: none;
 }
+/* 画像があるときは、読み込むまで灰色の四角にする。頭文字と色は、画像がない・読み込めないときだけ出す
+   （読み込めない画像は app.js が外すので、:has(img) が外れて頭文字に戻る） */
+.tile:has(img) { background: var(--field); color: transparent; }
 /* ジャケット画像は四角いっぱいに、中央を切り抜いて表示 */
 .tile img {
   position: absolute;
