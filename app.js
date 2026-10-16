@@ -26,7 +26,7 @@
 
   // ランク（下から順）。episodes = 見た話数（記録した作品の「見た話数」の合計）、
   // works = 作品数（「見終わった」と「視聴中」の作品）。両方を満たすと、そのランクになる。サンプルは数えない。
-  // secret のランクは、名前だけ出して達成条件は画面に出さない。色は style.css の --rank-<id>
+  // secret のランクは、達成条件を画面に出さない。名前も、そのランクになるまでは「？？？」にする。色は style.css の --rank-<id>
   const RANKS = [
     { id: 'normal', name: 'ノーマル', episodes: 0 },
     { id: 'rookie', name: 'ルーキー', episodes: 100 },
@@ -40,7 +40,7 @@
     { id: 'mithril', name: 'ミスリル', episodes: 7000, works: 300, secret: true },
     { id: 'orichalcum', name: 'オリハルコン', episodes: 10000, works: 500, secret: true },
   ];
-  const RANKED_STATUS = ['done', 'watching']; // 作品数に数える状態
+  const RANKED_STATUS = ['done']; // 作品数に数える状態（見終わった作品だけ）
 
   const collator = new Intl.Collator('ja');
   const SORTS = {
@@ -794,19 +794,22 @@
     return rankFor(episodes, works);
   }
 
+  const SECRET = (label) => `<span class="sr-only">${label}</span><span aria-hidden="true">？？？</span>`;
+
   function rankCondition(r) {
-    if (r.secret) return '？？？';
+    if (r.secret) return SECRET('達成条件はひみつ');
     return r.episodes ? `${r.episodes.toLocaleString('ja-JP')}話以上` : 'はじめのランク';
   }
 
-  // ランクと達成条件（上のランクから並べる）
+  // ランクと達成条件（上のランクから並べる）。ひみつのランクは、なるまで名前も色も出さない
   function openRankInfo() {
     const rank = currentRank();
     const at = RANKS.indexOf(rank.current);
     els.rankList.innerHTML = RANKS.map((r, i) => {
       const now = i === at;
-      return `<li data-rank="${r.id}"${i <= at ? ' class="reached"' : ''}${now ? ' aria-current="true"' : ''}>
-  <i aria-hidden="true"></i><span class="ln">${esc(r.name)}</span><span class="lm">${r.secret ? '<span class="sr-only">達成条件はひみつ</span><span aria-hidden="true">？？？</span>' : rankCondition(r)}</span>${now ? '<span class="now">いまここ</span>' : ''}
+      const hidden = r.secret && i > at;
+      return `<li data-rank="${hidden ? 'secret' : r.id}"${i <= at ? ' class="reached"' : ''}${now ? ' aria-current="true"' : ''}>
+  <i aria-hidden="true"></i><span class="ln">${hidden ? SECRET('ひみつのランク') : esc(r.name)}</span><span class="lm">${rankCondition(r)}</span>${now ? '<span class="now">いまここ</span>' : ''}
 </li>`;
     }).reverse().join('');
     els.rankSampleHint.hidden = !state.items.some((it) => it.sample);
@@ -856,8 +859,8 @@
       els.rankBar.value = 1;
       els.rankNext.textContent = 'いちばん上のランクです';
     } else if (next.secret) {
-      // 達成条件を伏せるランクは、残りの数も出さない
-      els.rankNext.textContent = `次は${next.name}。達成条件はひみつです`;
+      // ひみつのランクは、名前も残りの数も出さない
+      els.rankNext.textContent = '次のランクは ？？？。達成条件はひみつです';
     } else {
       els.rankBar.max = next.episodes - current.episodes;
       els.rankBar.value = rank.episodes - current.episodes;

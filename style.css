@@ -157,6 +157,7 @@ button.avatar:active .face { filter: brightness(0.85); }
 /* 上の2つは、メダルを特別な色の重ねにする */
 [data-rank="mithril"] { --rk: var(--rank-mithril); --rk-fill: linear-gradient(135deg, #ffffff 0%, #c7d8ff 45%, #7fa2ff 100%); }
 [data-rank="orichalcum"] { --rk: var(--rank-orichalcum); --rk-fill: linear-gradient(135deg, #ffd56b 0%, #ff7a45 50%, #c94cff 100%); }
+[data-rank="secret"] { --rk: var(--dim); }
 .title-row h1 {
   flex: 1;
   min-width: 0;
