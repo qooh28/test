@@ -24,16 +24,23 @@
   const TABS = ['all', 'watching', 'want', 'done', 'dropped'];
   const MODES = { mine: 'ライブラリ', find: '検索', account: 'アカウント' };
 
-  // ランク。数えるのは「見終わった」と「視聴中」の作品（サンプルは数えない）。
-  // 名前と必要な数は仮。本人が決めたら、ここだけ書き換える（色は style.css の --rank-<id>）
+  // ランク（下から順）。episodes = 見た話数（記録した作品の「見た話数」の合計）、
+  // works = 作品数（「見終わった」と「視聴中」の作品）。両方を満たすと、そのランクになる。サンプルは数えない。
+  // secret のランクは、名前だけ出して達成条件は画面に出さない。色は style.css の --rank-<id>
   const RANKS = [
-    { id: 'bronze', name: 'ブロンズ', min: 1 },
-    { id: 'silver', name: 'シルバー', min: 30 },
-    { id: 'gold', name: 'ゴールド', min: 100 },
-    { id: 'platinum', name: 'プラチナ', min: 300 },
-    { id: 'diamond', name: 'ダイヤモンド', min: 1000 },
+    { id: 'normal', name: 'ノーマル', episodes: 0 },
+    { id: 'rookie', name: 'ルーキー', episodes: 100 },
+    { id: 'amateur', name: 'アマチュア', episodes: 300 },
+    { id: 'veteran', name: 'ベテラン', episodes: 500 },
+    { id: 'bronze', name: 'ブロンズ', episodes: 1000 },
+    { id: 'silver', name: 'シルバー', episodes: 2000 },
+    { id: 'gold', name: 'ゴールド', episodes: 3000 },
+    { id: 'platinum', name: 'プラチナ', episodes: 4000 },
+    { id: 'diamond', name: 'ダイアモンド', episodes: 5000 },
+    { id: 'mithril', name: 'ミスリル', episodes: 7000, works: 300, secret: true },
+    { id: 'orichalcum', name: 'オリハルコン', episodes: 10000, works: 500, secret: true },
   ];
-  const RANKED_STATUS = ['done', 'watching'];
+  const RANKED_STATUS = ['done', 'watching']; // 作品数に数える状態
 
   const collator = new Intl.Collator('ja');
   const SORTS = {
@@ -141,10 +148,12 @@
     editProfile: $('edit-profile'),
     rankCard: $('rank-card'),
     rankTitle: $('rank-title'),
-    rankCount: $('rank-count'),
+    rankEpisodes: $('rank-episodes'),
     rankBar: $('rank-bar'),
     rankNext: $('rank-next'),
-    rankLadder: $('rank-ladder'),
+    rankInfo: $('rank-info'),
+    rankInfoBtn: $('rank-info-btn'),
+    rankList: $('rank-list'),
     rankSampleHint: $('rank-sample-hint'),
     stats: $('stats'),
     profileEditor: $('profile-editor'),
@@ -507,7 +516,7 @@
       btn.setAttribute('aria-selected', String(btn.dataset.mode === state.mode));
     }
     const rank = currentRank();
-    document.body.dataset.rank = rank.current ? rank.current.id : 'none';
+    document.body.dataset.rank = rank.current.id;
     paintAvatar(els.avatarBtn, state.profile, rank.current);
     paintAvatar(els.navAvatar, state.profile, null);
     els.avatarBtn.setAttribute('aria-label', state.profile.name ? `アカウント（${state.profile.name}）` : 'アカウント');
@@ -769,16 +778,39 @@
     return state.items.filter((it) => !it.sample);
   }
 
-  function rankFor(count) {
-    let index = -1;
+  // 条件を満たすいちばん上のランク。next はその1つ上（いちばん上なら null）
+  function rankFor(episodes, works) {
+    let index = 0;
     RANKS.forEach((r, i) => {
-      if (count >= r.min) index = i;
+      if (episodes >= r.episodes && works >= (r.works || 0)) index = i;
     });
-    return { count, current: RANKS[index] || null, next: RANKS[index + 1] || null };
+    return { episodes, works, current: RANKS[index], next: RANKS[index + 1] || null };
   }
 
   function currentRank() {
-    return rankFor(ownItems().filter((it) => RANKED_STATUS.includes(it.status)).length);
+    const own = ownItems();
+    const episodes = own.reduce((sum, it) => sum + it.watched, 0);
+    const works = own.filter((it) => RANKED_STATUS.includes(it.status)).length;
+    return rankFor(episodes, works);
+  }
+
+  function rankCondition(r) {
+    if (r.secret) return '？？？';
+    return r.episodes ? `${r.episodes.toLocaleString('ja-JP')}話以上` : 'はじめのランク';
+  }
+
+  // ランクと達成条件（上のランクから並べる）
+  function openRankInfo() {
+    const rank = currentRank();
+    const at = RANKS.indexOf(rank.current);
+    els.rankList.innerHTML = RANKS.map((r, i) => {
+      const now = i === at;
+      return `<li data-rank="${r.id}"${i <= at ? ' class="reached"' : ''}${now ? ' aria-current="true"' : ''}>
+  <i aria-hidden="true"></i><span class="ln">${esc(r.name)}</span><span class="lm">${r.secret ? '<span class="sr-only">達成条件はひみつ</span><span aria-hidden="true">？？？</span>' : rankCondition(r)}</span>${now ? '<span class="now">いまここ</span>' : ''}
+</li>`;
+    }).reverse().join('');
+    els.rankSampleHint.hidden = !state.items.some((it) => it.sample);
+    els.rankInfo.showModal();
   }
 
   // 丸いアイコン：写真 → 名前の最初の1文字 → 人の形、の順に出す。rank を渡すとランクの色の輪を付ける
@@ -809,34 +841,28 @@
     paintAvatar(els.heroAvatar, p, rank.current);
     els.profileName.textContent = p.name || '名前が未設定です';
     els.profileName.classList.toggle('unset', !p.name);
-    els.profileMeta.textContent = `視聴した作品 ${n(rank.count)} · ${rank.current ? rank.current.name : 'ランクなし'}`;
+    els.profileMeta.textContent = `見た話数 ${n(rank.episodes)}話 · ${rank.current.name}`;
     const isSet = Boolean(p.name || p.avatar);
     els.editProfile.textContent = isSet ? 'プロフィールを編集' : 'プロフィールを設定';
     els.editProfile.classList.toggle('primary', !isSet);
 
-    els.rankCard.dataset.rank = rank.current ? rank.current.id : 'none';
-    els.rankTitle.textContent = rank.current ? rank.current.name : 'ランクなし';
-    els.rankCount.textContent = n(rank.count);
-    const base = rank.current ? rank.current.min : 0;
-    if (rank.next) {
-      els.rankBar.max = rank.next.min - base;
-      els.rankBar.value = rank.count - base;
-      els.rankNext.textContent = rank.current
-        ? `${rank.next.name}まで あと${n(rank.next.min - rank.count)}作品`
-        : `${n(rank.next.min)}作品で${rank.next.name}になります`;
-    } else {
+    els.rankCard.dataset.rank = rank.current.id;
+    els.rankTitle.textContent = rank.current.name;
+    els.rankEpisodes.textContent = n(rank.episodes);
+    const { current, next } = rank;
+    els.rankBar.hidden = Boolean(next && next.secret);
+    if (!next) {
       els.rankBar.max = 1;
       els.rankBar.value = 1;
       els.rankNext.textContent = 'いちばん上のランクです';
+    } else if (next.secret) {
+      // 達成条件を伏せるランクは、残りの数も出さない
+      els.rankNext.textContent = `次は${next.name}。達成条件はひみつです`;
+    } else {
+      els.rankBar.max = next.episodes - current.episodes;
+      els.rankBar.value = rank.episodes - current.episodes;
+      els.rankNext.textContent = `${next.name}まで あと${n(next.episodes - rank.episodes)}話`;
     }
-    els.rankLadder.innerHTML = RANKS.map((r) => {
-      const reached = rank.count >= r.min;
-      const now = rank.current === r;
-      return `<li data-rank="${r.id}"${reached ? ' class="reached"' : ''}${now ? ' aria-current="true"' : ''}>
-  <i aria-hidden="true"></i><span class="ln">${esc(r.name)}</span><span class="lm">${n(r.min)}作品〜</span>${now ? '<span class="now">いまここ</span>' : ''}
-</li>`;
-    }).join('');
-    els.rankSampleHint.hidden = own.length === state.items.length;
 
     const counts = { done: 0, watching: 0, want: 0, dropped: 0 };
     let episodes = 0;
@@ -946,6 +972,7 @@
   els.avatarBtn.addEventListener('click', () => setMode('account'));
   els.heroAvatar.addEventListener('click', openProfileEditor);
   els.editProfile.addEventListener('click', openProfileEditor);
+  els.rankInfoBtn.addEventListener('click', openRankInfo);
 
   /* ---------- toast ---------- */
   let toastTimer = 0;
@@ -1327,7 +1354,7 @@
   });
 
   /* ---------- dialogs ---------- */
-  for (const dialog of [els.editor, els.menu, els.profileEditor]) {
+  for (const dialog of [els.editor, els.menu, els.profileEditor, els.rankInfo]) {
     dialog.addEventListener('click', (e) => {
       if (e.target === dialog) dialog.close(); // 背景をタップしたら閉じる
       if (e.target.closest('[data-close]')) dialog.close();

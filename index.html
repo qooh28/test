@@ -129,14 +129,15 @@
       <span class="medal" aria-hidden="true"></span>
       <div class="rank-name">
         <p class="eyebrow">ランク</p>
-        <h3 id="rank-title">ランクなし</h3>
+        <h3 id="rank-title">ノーマル</h3>
       </div>
-      <p class="rank-count"><b id="rank-count">0</b>作品</p>
+      <button type="button" class="icon-btn info-btn" id="rank-info-btn" aria-label="ランクと達成条件" aria-haspopup="dialog">
+        <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 11v6" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><circle cx="12" cy="7.5" r="1.4" fill="currentColor"/></svg>
+      </button>
     </div>
+    <p class="rank-count"><b id="rank-episodes">0</b>話<span>見た話数</span></p>
     <progress class="rank-bar" id="rank-bar" max="1" value="0"></progress>
     <p class="rank-next" id="rank-next"></p>
-    <ol class="ladder" id="rank-ladder" aria-label="ランクの段階"></ol>
-    <p class="hint">「見終わった」と「視聴中」の作品を数えます。<span id="rank-sample-hint" hidden>サンプルの作品は数えません。</span></p>
   </section>
 
   <section class="stats-sec" aria-labelledby="stats-title">
@@ -287,6 +288,20 @@
   </form>
 </dialog>
 
+<dialog class="sheet" id="rank-info" aria-labelledby="rank-info-title">
+  <div class="sheet-head">
+    <h2 id="rank-info-title">ランクと達成条件</h2>
+    <button type="button" class="icon-btn" data-close aria-label="閉じる">
+      <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>
+    </button>
+  </div>
+  <div class="sheet-body rank-info-body">
+    <p class="info-lead">見た話数が増えると、ランクが上がります。見た話数は、記録したすべての作品の「見た話数」を足した数です。<span id="rank-sample-hint" hidden>サンプルの作品は数えません。</span></p>
+    <ol class="ladder" id="rank-list" aria-label="ランクの一覧（上のランクから）"></ol>
+    <p class="hint">「？？？」のランクの達成条件は、ひみつです。</p>
+  </div>
+</dialog>
+
 <dialog class="sheet" id="menu" aria-labelledby="menu-title">
   <div class="sheet-head">
     <h2 id="menu-title">設定とバックアップ</h2>
@@ -314,7 +329,7 @@
         <button type="button" class="btn ghost" id="clear-samples">サンプルの作品を消す</button>
       </div>
     </section>
-    <p class="version">アニメ視聴記録 v2.1.0</p>
+    <p class="version">アニメ視聴記録 v2.2.0</p>
   </div>
 </dialog>
 <!-- /shared:body -->

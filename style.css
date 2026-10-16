@@ -26,11 +26,17 @@
   --glow: rgb(30 215 96 / 16%);
 
   /* ランクの色 */
+  --rank-normal: #8a8a8a;
+  --rank-rookie: #6fd39a;
+  --rank-amateur: #4fb3e8;
+  --rank-veteran: #a77df0;
   --rank-bronze: #d08a4e;
   --rank-silver: #c9ced6;
   --rank-gold: #f0c03a;
   --rank-platinum: #8fe0d8;
   --rank-diamond: #82c3ff;
+  --rank-mithril: #dbe6ff;
+  --rank-orichalcum: #ff7a45;
 
   /* ジャケット風の四角の色（作品ごとに題名から選ぶ） */
   --t0: #e8115b; --t1: #8d67ab; --t2: #1e3264; --t3: #ba5d07; --t4: #27856a; --t5: #509bf5;
@@ -139,12 +145,18 @@ button { cursor: pointer; -webkit-tap-highlight-color: transparent; }
 button.avatar:active .face { filter: brightness(0.85); }
 
 /* ランクの色（app.js の RANKS の id と合わせる） */
+[data-rank="normal"] { --rk: var(--rank-normal); }
+[data-rank="rookie"] { --rk: var(--rank-rookie); }
+[data-rank="amateur"] { --rk: var(--rank-amateur); }
+[data-rank="veteran"] { --rk: var(--rank-veteran); }
 [data-rank="bronze"] { --rk: var(--rank-bronze); }
 [data-rank="silver"] { --rk: var(--rank-silver); }
 [data-rank="gold"] { --rk: var(--rank-gold); }
 [data-rank="platinum"] { --rk: var(--rank-platinum); }
 [data-rank="diamond"] { --rk: var(--rank-diamond); }
-[data-rank="none"] { --rk: var(--field); }
+/* 上の2つは、メダルを特別な色の重ねにする */
+[data-rank="mithril"] { --rk: var(--rank-mithril); --rk-fill: linear-gradient(135deg, #ffffff 0%, #c7d8ff 45%, #7fa2ff 100%); }
+[data-rank="orichalcum"] { --rk: var(--rank-orichalcum); --rk-fill: linear-gradient(135deg, #ffd56b 0%, #ff7a45 50%, #c94cff 100%); }
 .title-row h1 {
   flex: 1;
   min-width: 0;
@@ -573,11 +585,7 @@ body[data-mode="find"] .search-icon { color: #121212; }
 
 /* ---------- アカウント ---------- */
 /* 画面上の光を、今のランクの色にする */
-body[data-mode="account"][data-rank="bronze"] { --glow: rgb(208 138 78 / 24%); }
-body[data-mode="account"][data-rank="silver"] { --glow: rgb(201 206 214 / 18%); }
-body[data-mode="account"][data-rank="gold"] { --glow: rgb(240 192 58 / 22%); }
-body[data-mode="account"][data-rank="platinum"] { --glow: rgb(143 224 216 / 20%); }
-body[data-mode="account"][data-rank="diamond"] { --glow: rgb(130 195 255 / 22%); }
+body[data-mode="account"] { --glow: color-mix(in srgb, var(--rk, var(--accent)) 22%, transparent); }
 
 .account { gap: 24px; }
 .profile-hero {
@@ -634,17 +642,23 @@ body[data-mode="account"][data-rank="diamond"] { --glow: rgb(130 195 255 / 22%);
   border-radius: 50%;
   background:
     radial-gradient(circle at 34% 28%, rgb(255 255 255 / 55%) 0 14%, rgb(255 255 255 / 0) 34%),
-    var(--rk);
+    var(--rk-fill, var(--rk));
   box-shadow: inset 0 -3px 0 rgb(0 0 0 / 22%);
 }
 .rank-name h3 { margin: 0; font-size: 22px; font-weight: 800; line-height: 1.2; }
 .rank-count {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
   margin: 0;
   color: var(--sub);
   font-size: var(--fs-sm);
   font-variant-numeric: tabular-nums;
 }
-.rank-count b { color: var(--text); font-size: 22px; font-weight: 800; margin-right: 2px; }
+.rank-count b { color: var(--text); font-size: 30px; font-weight: 800; line-height: 1.1; }
+.rank-count span { margin-left: 8px; }
+.info-btn { color: var(--sub); margin-right: -8px; }
+.info-btn:active { color: var(--text); }
 .rank-bar {
   display: block;
   width: 100%;
@@ -663,7 +677,7 @@ body[data-mode="account"][data-rank="diamond"] { --glow: rgb(130 195 255 / 22%);
 .ladder {
   display: grid;
   gap: 2px;
-  margin: 4px 0 0;
+  margin: 0;
   padding: 0;
   list-style: none;
 }
@@ -681,7 +695,8 @@ body[data-mode="account"][data-rank="diamond"] { --glow: rgb(130 195 255 / 22%);
 .ladder i { width: 12px; height: 12px; border-radius: 50%; border: 2px solid var(--rk); }
 .ladder li.reached { color: var(--sub); }
 .ladder li.reached i { background: var(--rk); }
-.ladder li[aria-current] { background: var(--line); color: var(--text); font-weight: 700; }
+.ladder li[aria-current] { background: var(--field); color: var(--text); font-weight: 700; }
+.ladder li.reached i { background: var(--rk-fill, var(--rk)); }
 .ladder .ln { overflow-wrap: anywhere; }
 .ladder .now {
   padding: 0 7px;
@@ -692,7 +707,9 @@ body[data-mode="account"][data-rank="diamond"] { --glow: rgb(130 195 255 / 22%);
   font-weight: 800;
   line-height: 1.8;
 }
-.rank-card .hint, .photo-field .hint { margin: 0; color: var(--dim); font-size: var(--fs-xs); }
+.rank-info-body .hint, .photo-field .hint { margin: 0; color: var(--dim); font-size: var(--fs-xs); }
+.rank-info-body { gap: 14px; }
+.info-lead { margin: 0; color: var(--sub); font-size: var(--fs-sm); }
 
 .stats-sec { display: grid; gap: 10px; }
 .sec-title { margin: 0; font-size: 20px; font-weight: 800; }
