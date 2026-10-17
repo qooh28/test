@@ -111,7 +111,6 @@
     emptyBody: $('empty-body'),
     emptyAdd: $('empty-add'),
     findToolbar: $('find-toolbar'),
-    findCount: $('find-count'),
     findSort: $('find-sort'),
     works: $('works'),
     findMore: $('find-more'),
@@ -766,11 +765,9 @@
 
     const shown = list.slice(0, state.find.limit);
     els.findToolbar.hidden = false;
-    els.findCount.textContent = `${list.length.toLocaleString('ja-JP')}作品`;
     els.works.hidden = shown.length === 0;
     setRows(els.works, shown.map((w) => workHTML(w, recorded.get(w.id))));
     els.findMore.hidden = list.length <= shown.length;
-    els.findMore.textContent = `もっと見る（残り${(list.length - shown.length).toLocaleString('ja-JP')}作品）`;
     els.findEmpty.hidden = list.length > 0;
     els.findRetry.hidden = true;
     if (!list.length) {
