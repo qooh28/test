@@ -25,7 +25,7 @@
   const MODES = { mine: 'ライブラリ', find: '検索', account: 'アカウント' };
 
   // ランク（下から順）。episodes = 見た話数（記録した作品の「見た話数」の合計）、
-  // works = 作品数（「見終わった」と「視聴中」の作品）。両方を満たすと、そのランクになる。サンプルは数えない。
+  // works = 作品数（「見終わった」作品だけ）。両方を満たすと、そのランクになる。サンプルは数えない。
   // secret のランクは、達成条件を画面に出さない。名前も、そのランクになるまでは「？？？」にする。色は style.css の --rank-<id>
   const RANKS = [
     { id: 'normal', name: 'ノーマル', episodes: 0 },
@@ -915,10 +915,10 @@
       }
     }
     const stats = [
-      ['見終わった', n(counts.done)],
-      ['視聴中', n(counts.watching)],
-      ['見たい', n(counts.want)],
-      ['中断', n(counts.dropped)],
+      ['見終わった作品', n(counts.done)],
+      ['視聴中の作品', n(counts.watching)],
+      ['見たい作品', n(counts.want)],
+      ['中断した作品', n(counts.dropped)],
       ['見た話数', n(episodes)],
       ['平均の星', rated ? (stars / rated).toFixed(1) : '—'],
     ];
