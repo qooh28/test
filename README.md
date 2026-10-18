@@ -55,13 +55,17 @@ TVmaze の API は CC BY-SA 4.0 で、商用でも使えます（条件は、ア
 アプリは「作品をさがす」の下と、右上の「…」に出典のリンクを出しています。
 
 ```sh
-# covers.json を作る（Annict・Wikidata・TVmaze に問い合わせる。TVmaze は10秒に20回までなので、30分ほどかかる）
+# covers.json を作る（Annict・Wikidata・TVmaze に問い合わせる。TVmaze は10秒に20回までなので、1時間ほどかかる）
+# --cache を付けると、取ったデータを残して、止まっても続きから取れる
 python3 scripts/build_covers.py --cache .cache/covers
 ```
 
-- Annict の作品の MyAnimeList の番号を、[Wikidata](https://www.wikidata.org)（CC0）で TVmaze の番組に結びつけます。
-  2期・3期など結びつかないテレビ作品は、Annict で同じシリーズの作品が結びついた番組から、同じ時期に始まった季を探します。
-  間違ったポスターを出さないよう、1つに決まるものだけを使います。劇場版には付けません（TVmaze はテレビ番組だけ）。
+- 結びつけ方は3段階です。間違ったポスターを出さないよう、1つに決まるものだけを使います。劇場版には付けません（TVmaze はテレビ番組だけ）。
+  1. Annict の作品の MyAnimeList の番号を、[Wikidata](https://www.wikidata.org)（CC0）で TVmaze の番組に結びつける。
+  2. 結びつかない人気のテレビ・Web 作品（上位3,000作品の中）は、題名で TVmaze を検索し、同じ時期に始まった日本語のアニメを探す。
+     題名がぴったり合う番組を先に決め、残りは候補が1つに絞れるときだけ使う。
+  3. 2期・3期などは、Annict で同じシリーズの作品が結びついた番組から、同じ時期に始まった季を探す。
+     その季にすでに別の作品が結びついていれば（同じ時期のミニアニメなど）使わない。
 - `covers.json` は TVmaze のデータから作ったものなので CC BY-SA 4.0 です。Annict のデータ（`catalog.json`）とは分けて置いています。
 - ポスターの著作権は、それぞれの作品の権利者にあります。
 - 以前は [AniList](https://anilist.co) の画像を使っていましたが、2026-10-18 にやめました。
