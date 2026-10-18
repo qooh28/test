@@ -67,9 +67,28 @@ python3 scripts/build_covers.py --cache .cache/covers
   3. 2期・3期などは、Annict で同じシリーズの作品が結びついた番組から、同じ時期に始まった季を探す。
      その季にすでに別の作品が結びついていれば（同じ時期のミニアニメなど）使わない。
 - `covers.json` は TVmaze のデータから作ったものなので CC BY-SA 4.0 です。Annict のデータ（`catalog.json`）とは分けて置いています。
-- ポスターの著作権は、それぞれの作品の権利者にあります。
+- ポスターの著作権は、それぞれの作品の権利者にあります。アプリにも「作品画像の著作権は、各作品の権利者に帰属します。」と出しています。
+
+#### 権利者から画像の削除を頼まれたら
+
+アプリの「…」→「画像の削除を依頼する」から、GitHub の課題（Issues）に依頼が届きます。
+作品を確かめたら、Annict の作品 ID を指定してポスターを外し、公開し直します。
+
+```sh
+python3 scripts/build_covers.py --remove 10079 --note "issue #3 で依頼"   # covers.json から外し、covers_blocklist.txt に記録
+```
+
+`scripts/covers_blocklist.txt` に書いた作品は、covers.json を作り直しても付きません。
 - 以前は [AniList](https://anilist.co) の画像を使っていましたが、2026-10-18 にやめました。
   AniList の API の利用規約（https://docs.anilist.co/guide/terms-of-use ）が、アニメの記録アプリ（"anime and manga list or tracker services"）での利用と、データの大量取得を禁じているためです。
+
+## App Store に出す前に
+
+- ストアのスクリーンショットに、実在の作品の画像を写さない（Apple は権利のない作品の画像が写ったスクリーンショットを認めていない）。
+  URL の最後に `?screenshot` を付けて開くと（例：https://qooh28.github.io/test/?screenshot ）、架空の作品だけを並べ、ポスターを出さない表示になります。
+  この表示では記録・設定・プロフィールを一切保存しないので、自分の記録はそのまま残ります。
+- 画像の出典（TVmaze）と「作品画像の著作権は、各作品の権利者に帰属します。」をアプリに出しておく（出してある）。
+- 権利者からの削除依頼を受ける窓口を用意しておく（「…」→「画像の削除を依頼する」）。
 
 ### 配信サービスの情報について
 
@@ -113,5 +132,6 @@ git push origin master:gh-pages   # 1〜2分で公開中のサイトに反映さ
 | `scripts/readings.py` | タイトル順に使う読み（ひらがな）を作る |
 | `covers.json` | 作品ごとの TVmaze のポスター（`scripts/build_covers.py` で作る。CC BY-SA 4.0） |
 | `scripts/build_covers.py` | Annict・Wikidata・TVmaze から `covers.json` を作るスクリプト |
+| `scripts/covers_blocklist.txt` | 権利者から削除を頼まれ、ポスターを付けない作品 |
 
 ビルドは不要です。ファイルをそのまま置けば動きます。

@@ -4,6 +4,9 @@
 
   const STORE_KEY = 'anime-log:v1';
   const PREFS_KEY = 'anime-log:prefs';
+  // App Store のスクリーンショット用。URL に ?screenshot を付けると、架空の作品だけを出し、
+  // ポスターを出さず、記録・設定・プロフィールを一切保存しない（自分の記録はそのまま残る）
+  const SCREENSHOT_MODE = new URLSearchParams(location.search).has('screenshot');
   const PROFILE_KEY = 'anime-log:profile'; // アカウント（名前と写真）。今はこの端末の中だけ
   const AVATAR_SIZE = 256; // 写真は正方形に切り抜いて、この大きさ（px）の JPEG にして保存する
   const AVATAR_DATA = /^data:image\/(?:jpeg|png|webp);base64,[A-Za-z0-9+/]+=*$/;
@@ -314,6 +317,25 @@
     ].map(({ ago, ...s }) => normalize({ ...s, kana: SAMPLE_KANA[s.title], id: newId(), sample: true, createdAt: now - ago * hour, updatedAt: now - ago * hour }));
   }
 
+  // スクリーンショット用の架空の作品（実在の作品と重ならない題名）。見た話数の合計でゴールドのランクになる
+  function makeScreenshotItems() {
+    const now = Date.now();
+    const hour = 3600 * 1000;
+    return [
+      { title: '星降る街のアトリエ', kana: 'ほしふるまちのあとりえ', status: 'watching', watched: 7, total: 12, year: 2026, cour: 'fall', rating: 5, note: '毎週の楽しみ。夜の街の背景がきれい。', ago: 1 },
+      { title: '銀河配達便ルミナ', kana: 'ぎんがはいたつびんるみな', status: 'watching', watched: 15, total: 24, year: 2026, cour: 'summer', rating: 5, note: '配達先ごとの一話完結が心地いい。', ago: 20 },
+      { title: '星屑商店街物語', kana: 'ほしくずしょうてんがいものがたり', status: 'watching', watched: 2140, total: null, year: 1994, cour: 'spring', rating: 4, note: '子どものころから続けて見ている。', ago: 30 },
+      { title: '放課後キッチン部', kana: 'ほうかごきっちんぶ', status: 'done', watched: 12, total: 12, year: 2026, cour: 'spring', rating: 4, note: '見たあとは必ずお腹がすく。', ago: 48 },
+      { title: '千年図書館の司書さん', kana: 'せんねんとしょかんのししょさん', status: 'done', watched: 26, total: 26, year: 2025, cour: 'fall', rating: 5, note: '最終話で全部つながった。', ago: 72 },
+      { title: 'ねこまち日和', kana: 'ねこまちびより', status: 'done', watched: 860, total: 860, year: 2004, cour: 'spring', rating: 4, note: '', ago: 96 },
+      { title: 'こたつと宇宙人', kana: 'こたつとうちゅうじん', status: 'done', watched: 24, total: 24, year: 2025, cour: 'winter', rating: 4, note: 'ゆるい会話劇。', ago: 120 },
+      { title: '雪原のセレナーデ', kana: 'せつげんのせれなーで', status: 'done', watched: 12, total: 12, year: 2025, cour: 'winter', rating: 3, note: '', ago: 150 },
+      { title: 'まほろば遺跡探検記', kana: 'まほろばいせきたんけんき', status: 'want', watched: 0, total: 13, year: 2027, cour: 'winter', rating: 0, note: '友だちのおすすめ。', ago: 170 },
+      { title: 'ロボット農家はじめました', kana: 'ろぼっとのうかはじめました', status: 'want', watched: 0, total: 12, year: 2027, cour: 'winter', rating: 0, note: '', ago: 190 },
+      { title: '霧の港のレイヴン', kana: 'きりのみなとのれいゔん', status: 'dropped', watched: 5, total: 12, year: 2025, cour: 'summer', rating: 0, note: '続きは6話から。', ago: 400 },
+    ].map(({ ago, ...s }) => normalize({ ...s, id: newId(), createdAt: now - ago * hour, updatedAt: now - ago * hour }));
+  }
+
   function normalizeProfile(raw) {
     const now = Date.now();
     const p = raw && typeof raw === 'object' ? raw : {};
@@ -337,6 +359,7 @@
   }
 
   function writeJSON(key, value) {
+    if (SCREENSHOT_MODE) return true; // スクリーンショット用の表示では保存しない
     try {
       localStorage.setItem(key, JSON.stringify(value));
       return true;
@@ -346,6 +369,11 @@
   }
 
   function load() {
+    if (SCREENSHOT_MODE) {
+      state.items = makeScreenshotItems();
+      state.profile = normalizeProfile({ name: 'アニメ好き', updatedAt: Date.now() });
+      return;
+    }
     const saved = readJSON(STORE_KEY);
     if (saved && Array.isArray(saved.items)) {
       state.items = saved.items.map(normalize).filter(Boolean);
@@ -395,6 +423,7 @@
   /* ---------- covers ---------- */
   // ポスターの一覧は小さいので、起動したらすぐ読み込む。読めなくても頭文字の四角で動く
   function loadCovers() {
+    if (SCREENSHOT_MODE) return; // スクリーンショットに作品の画像を写さない
     fetch(COVERS_URL)
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
@@ -1500,6 +1529,7 @@
   load();
   setMode(state.mode);
   loadCovers();
+  if (SCREENSHOT_MODE) toast('スクリーンショット用の表示です。架空の作品を出し、変更は保存しません');
   if (needKana()) loadCatalog();
 
   try {

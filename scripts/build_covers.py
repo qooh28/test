@@ -5,6 +5,9 @@
   python3 scripts/build_covers.py                  # covers.json を作る
   python3 scripts/build_covers.py --cache DIR      # 取ったデータを DIR に残し、次は続きから取る
   python3 scripts/build_covers.py --search 0       # TVmaze の検索を使わない（Wikidata とシリーズだけ）
+  python3 scripts/build_covers.py --remove 10079   # 権利者から削除を頼まれた作品のポスターを外す（問い合わせはしない）
+
+削除を頼まれた作品は scripts/covers_blocklist.txt に Annict の作品 ID を書いておく。作り直しても付かない。
 
 結びつけ方（間違ったポスターを出さないよう、確かなものだけ。劇場版には付けない）:
   1. Annict の作品の MyAnimeList の番号を、Wikidata で TVmaze の番組 ID に変える（1つに決まるものだけ）。
@@ -63,6 +66,7 @@ query ($after: String) {
 SEASON_MONTH = {"WINTER": 1, "SPRING": 4, "SUMMER": 7, "AUTUMN": 10}
 NOT_MOVIE = {"TV", "WEB", "OVA", "OTHER"}
 SEQUEL_MEDIA = {"TV", "WEB"}
+BLOCKLIST = os.path.join(os.path.dirname(os.path.abspath(__file__)), "covers_blocklist.txt")
 # 2期・3期の題名の後ろにつく言葉（例：第2期、Season 2、Ⅱ、2nd Season、第3シリーズ）。fold した形で比べる
 SEQUEL_SUFFIX = re.compile(r"^(?:|[ivx]+|.*\d.*|.*(?:期|season|シーズン|シリーズ|続).*)$")
 
@@ -357,12 +361,52 @@ def make_covers(works, linked, shows):
     return covers
 
 
+def read_blocklist():
+    """削除を頼まれた作品（Annict の作品 ID）。# から後ろはメモ"""
+    if not os.path.exists(BLOCKLIST):
+        return set()
+    with open(BLOCKLIST, encoding="utf-8") as fp:
+        return {int(line.split("#")[0]) for line in fp if line.split("#")[0].strip()}
+
+
+def write_covers(path, covers, generated_at=None):
+    today = datetime.date.today()
+    data = {
+        "source": "TVmaze (https://www.tvmaze.com)",
+        "license": "CC BY-SA 4.0 (https://creativecommons.org/licenses/by-sa/4.0/)",
+        "generatedAt": generated_at or f"{today.year}年{today.month}月{today.day}日",
+        "covers": {str(k): covers[k] for k in sorted(covers, key=int)},
+    }
+    with open(path, "w", encoding="utf-8") as fp:
+        json.dump(data, fp, ensure_ascii=False, separators=(",", ":"))
+    print(f"{path} に書き出しました（{len(covers)}作品）", file=sys.stderr)
+
+
+def remove(path, ids, note):
+    """作品のポスターを covers.json から外し、作り直しても付かないよう covers_blocklist.txt に書く"""
+    blocked = read_blocklist()
+    today = datetime.date.today().isoformat()
+    with open(BLOCKLIST, "a", encoding="utf-8") as fp:
+        for work_id in ids:
+            if work_id not in blocked:
+                fp.write(f"{work_id}  # {today} {note}".rstrip() + "\n")
+    with open(path, encoding="utf-8") as fp:
+        data = json.load(fp)
+    covers = {int(k): v for k, v in data["covers"].items() if int(k) not in set(ids)}
+    write_covers(path, covers, data.get("generatedAt"))
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--out", default=os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "covers.json"))
     parser.add_argument("--cache", help="取ったデータを置くフォルダ（あれば続きから取る）")
     parser.add_argument("--search", type=int, default=SEARCH_TOP, help=f"TVmaze を検索する人気の上位の作品数（既定 {SEARCH_TOP}、0 で検索しない）")
+    parser.add_argument("--remove", type=int, nargs="+", metavar="ID", help="この Annict の作品 ID のポスターを外す（作り直しても付かない）")
+    parser.add_argument("--note", default="", help="--remove のときに残すメモ（例：権利者からの依頼 issue #3）")
     args = parser.parse_args()
+    if args.remove:
+        remove(args.out, args.remove, args.note)
+        return
     cache = (lambda name: os.path.join(args.cache, name)) if args.cache else (lambda name: None)
     if args.cache:
         os.makedirs(args.cache, exist_ok=True)
@@ -381,17 +425,9 @@ def main():
         shows = fetch_tvmaze_shows(sorted(set(found.values()), key=int), cache("tvmaze_shows.json"), shows)
         linked.update(found)
     covers = make_covers(works, linked, shows)
-
-    today = datetime.date.today()
-    data = {
-        "source": "TVmaze (https://www.tvmaze.com)",
-        "license": "CC BY-SA 4.0 (https://creativecommons.org/licenses/by-sa/4.0/)",
-        "generatedAt": f"{today.year}年{today.month}月{today.day}日",
-        "covers": {str(k): covers[k] for k in sorted(covers)},
-    }
-    with open(args.out, "w", encoding="utf-8") as fp:
-        json.dump(data, fp, ensure_ascii=False, separators=(",", ":"))
-    print(f"{args.out} に書き出しました", file=sys.stderr)
+    blocked = read_blocklist()
+    covers = {k: v for k, v in covers.items() if k not in blocked}
+    write_covers(args.out, covers)
 
 
 if __name__ == "__main__":

@@ -781,6 +781,7 @@ body[data-mode="account"] { --glow: color-mix(in srgb, var(--rk, var(--accent)) 
   transition: transform 0.08s ease-out;
 }
 .btn:active { transform: scale(0.97); }
+a.btn { text-decoration: none; } /* リンクをボタンの見た目で出すとき */
 .btn.primary { background: var(--accent); color: var(--on-accent); }
 .btn.primary:active { background: var(--accent-press); }
 .btn.light { background: var(--text); color: #121212; }

@@ -1,0 +1,3 @@
+# 権利者から削除を頼まれた作品（Annict の作品 ID）。この作品にはポスターを付けない。
+# 追加は python3 scripts/build_covers.py --remove ID --note "メモ" で（covers.json からも外れる）。
+# 1行に1作品。# から後ろはメモ（受けた日・依頼の場所など）。
