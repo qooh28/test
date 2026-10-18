@@ -16,7 +16,7 @@ iPhone のホーム画面に追加すると、アプリのように使えます�
 - 一覧のカードから ＋1話／−1話
 - 「作品をさがす」：Annict に載っているアニメ作品を、作品名で探して登録できる（人気順／評価順（自分がつけた星の数）／放送時期が新しい順／タイトル順）
 - 作品名を入力すると候補が出て、話数・放送時期が自動で入る
-- 作品は、題名の1文字を出した色付きの四角で表示（ジャケット画像は今は出さない。下の「ジャケット画像について」）
+- テレビアニメは TVmaze のポスターを表示。ポスターがない作品（劇場版など）や読み込めないときは、題名の1文字を出した色付きの四角（下の「ポスター画像について」）
 - アカウント：名前と、写真ライブラリから選んだ写真のアイコン（写真は端末の中で 256px の正方形に切り抜いて保存し、どこにも送らない）
 - ランク：見た話数（記録した全作品の「見た話数」の合計）で11段階（ノーマル → ルーキー 100話 → アマチュア 300話 → ベテラン 500話 → ブロンズ 1,000話 → シルバー 2,000話 → ゴールド 3,000話 → プラチナ 4,000話 → ダイアモンド 5,000話 → ミスリル → オリハルコン）。ミスリルとオリハルコンは作品数（「見終わった」作品だけ）の条件もあり、画面では達成条件を伏せる。名前もそのランクになるまで「？？？」にする。定義は `app.js` の `RANKS`。アカウント画面の ⓘ で一覧と達成条件を見られる。記録の数字（見終わった作品・視聴中の作品・見たい作品・中断した作品・見た話数・平均の星）も出す
 - バックアップの書き出しと読み込み（JSON ファイル。プロフィールも入る）
@@ -48,11 +48,24 @@ python3 scripts/build_catalog.py --update-readings
   環境変数 `ANNICT_TOKEN` で渡すか、Claude Code の環境の Network secrets に `api.annict.com` 宛てで保存します。
 - 新しい作品が増えるので、ときどき作り直してください。
 
-### ジャケット画像について
+### ポスター画像について（covers.json）
 
-以前は [AniList](https://anilist.co) の画像を使っていましたが、2026-10-18 にやめました。
-AniList の API の利用規約（https://docs.anilist.co/guide/terms-of-use ）が、アニメの記録アプリ（"anime and manga list or tracker services"）での利用と、データの大量取得を禁じているためです。
-今は画像を出さず、題名の1文字を出した色付きの四角にしています。規約に反しない画像の出どころが見つかったら入れ直します。
+テレビアニメのポスターは [TVmaze](https://www.tvmaze.com) の画像を、TVmaze の画像置き場（static.tvmaze.com）から読み込んで表示します。
+TVmaze の API は CC BY-SA 4.0 で、商用でも使えます（条件は、アプリから TVmaze へのリンクで出典を示すことと、ShareAlike）。
+アプリは「作品をさがす」の下と、右上の「…」に出典のリンクを出しています。
+
+```sh
+# covers.json を作る（Annict・Wikidata・TVmaze に問い合わせる。TVmaze は10秒に20回までなので、30分ほどかかる）
+python3 scripts/build_covers.py --cache .cache/covers
+```
+
+- Annict の作品の MyAnimeList の番号を、[Wikidata](https://www.wikidata.org)（CC0）で TVmaze の番組に結びつけます。
+  2期・3期など結びつかないテレビ作品は、Annict で同じシリーズの作品が結びついた番組から、同じ時期に始まった季を探します。
+  間違ったポスターを出さないよう、1つに決まるものだけを使います。劇場版には付けません（TVmaze はテレビ番組だけ）。
+- `covers.json` は TVmaze のデータから作ったものなので CC BY-SA 4.0 です。Annict のデータ（`catalog.json`）とは分けて置いています。
+- ポスターの著作権は、それぞれの作品の権利者にあります。
+- 以前は [AniList](https://anilist.co) の画像を使っていましたが、2026-10-18 にやめました。
+  AniList の API の利用規約（https://docs.anilist.co/guide/terms-of-use ）が、アニメの記録アプリ（"anime and manga list or tracker services"）での利用と、データの大量取得を禁じているためです。
 
 ### 配信サービスの情報について
 
@@ -94,5 +107,7 @@ git push origin master:gh-pages   # 1〜2分で公開中のサイトに反映さ
 | `catalog.json` | アニメ作品の一覧（`scripts/build_catalog.py` で作る） |
 | `scripts/build_catalog.py` | Annict から `catalog.json` を作るスクリプト |
 | `scripts/readings.py` | タイトル順に使う読み（ひらがな）を作る |
+| `covers.json` | 作品ごとの TVmaze のポスター（`scripts/build_covers.py` で作る。CC BY-SA 4.0） |
+| `scripts/build_covers.py` | Annict・Wikidata・TVmaze から `covers.json` を作るスクリプト |
 
 ビルドは不要です。ファイルをそのまま置けば動きます。

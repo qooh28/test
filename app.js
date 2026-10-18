@@ -10,6 +10,10 @@
   const AVATAR_MAX = 400000; // 保存する写真の上限（文字数）。256px の JPEG なら 20〜60KB ほど
   const NAME_MAX = 30;
   const CATALOG_URL = 'catalog.json'; // 配信サービスで見られる作品の一覧（scripts/build_catalog.py で作る）
+  // ポスター画像（TVmaze）。covers.json は Annict の作品 ID → TVmaze の画像のパス（scripts/build_covers.py で作る）
+  const COVERS_URL = 'covers.json';
+  const COVER_BASE = 'https://static.tvmaze.com/uploads/images/medium_portrait/';
+  const COVER_PATH = /^\d{1,6}\/\d{1,12}\.(?:jpe?g|png)$/;
   const TILE_COLORS = 12; // ジャケット風の四角の色の数（style.css の .c0〜.c11）
   const FIND_PAGE = 60; // 「作品をさがす」で一度に並べる件数
   const SUGGEST_LIMIT = 6;
@@ -186,13 +190,14 @@
     byTitle: new Map(),
     generatedAt: '',
   };
+  const covers = new Map(); // Annict の作品 ID → TVmaze の画像のパス
 
   /* ---------- helpers ---------- */
   const ESC = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
   const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ESC[c]);
 
   // 中身が変わったときだけ入れ替える。画面を切り替えるたびに作り直すと、
-  // 写真（アバター）が読み込み直しになり、一瞬ちらつくため
+  // ポスターや写真が読み込み直しになり、一瞬ちらつくため
   const shownHTML = new WeakMap();
   function setHTML(el, html) {
     if (shownHTML.get(el) === html) return;
@@ -200,17 +205,23 @@
     el.innerHTML = html;
   }
 
-  // 一覧用：行ごとに比べて、変わった行だけ作り直す（同じ行は要素ごと残す）
+  // 一覧用：行ごとに比べて、変わった行だけ作り直す（同じ行は要素ごと残すので、画像を読み込み直さない）
   const shownRows = new WeakMap();
   const rowTemplate = document.createElement('template');
   function setRows(el, rows) {
     const prev = shownRows.get(el) || new Map();
+    const prevById = new Map([...el.children].filter((n) => n.dataset.id).map((n) => [n.dataset.id, n]));
     const next = new Map();
     const nodes = rows.map((html) => {
       let node = prev.get(html);
       if (!node || next.has(html)) {
         rowTemplate.innerHTML = html;
         node = rowTemplate.content.firstElementChild;
+        // 中身が変わった行（＋1話など）も、同じポスターは読み込み済みの要素を使い回す
+        const old = node.dataset.id && prevById.get(node.dataset.id);
+        const oldImg = old && old.querySelector('.tile img');
+        const newImg = node.querySelector('.tile img');
+        if (oldImg && newImg && oldImg.getAttribute('src') === newImg.getAttribute('src')) newImg.replaceWith(oldImg);
       }
       next.set(html, node);
       return node;
@@ -295,11 +306,11 @@
     const now = Date.now();
     const hour = 3600 * 1000;
     return [
-      { title: '葬送のフリーレン', status: 'watching', watched: 18, total: 28, year: 2023, cour: 'fall', rating: 5, note: '静かな回ほど沁みる。一級魔法使い試験に入った。', ago: 2 },
-      { title: 'ダンジョン飯', status: 'watching', watched: 9, total: 24, year: 2024, cour: 'winter', rating: 4, note: '料理の作画がとにかくおいしそう。', ago: 26 },
-      { title: 'ぼっち・ざ・ろっく！', status: 'done', watched: 12, total: 12, year: 2022, cour: 'fall', rating: 5, note: '文化祭ライブの回は何度でも見返せる。', ago: 50 },
-      { title: '薬屋のひとりごと', status: 'want', watched: 0, total: 24, year: 2023, cour: 'fall', rating: 0, note: '友だちのおすすめ。', ago: 74 },
-      { title: 'ONE PIECE', status: 'dropped', watched: 380, total: null, year: 1999, cour: 'fall', rating: 0, note: '長いので一旦お休み。続きは381話から。', ago: 300 },
+      { title: '葬送のフリーレン', sourceId: 10079, status: 'watching', watched: 18, total: 28, year: 2023, cour: 'fall', rating: 5, note: '静かな回ほど沁みる。一級魔法使い試験に入った。', ago: 2 },
+      { title: 'ダンジョン飯', sourceId: 9820, status: 'watching', watched: 9, total: 24, year: 2024, cour: 'winter', rating: 4, note: '料理の作画がとにかくおいしそう。', ago: 26 },
+      { title: 'ぼっち・ざ・ろっく！', sourceId: 8128, status: 'done', watched: 12, total: 12, year: 2022, cour: 'fall', rating: 5, note: '文化祭ライブの回は何度でも見返せる。', ago: 50 },
+      { title: '薬屋のひとりごと', sourceId: 10518, status: 'want', watched: 0, total: 24, year: 2023, cour: 'fall', rating: 0, note: '友だちのおすすめ。', ago: 74 },
+      { title: 'ONE PIECE', sourceId: 2457, status: 'dropped', watched: 380, total: null, year: 1999, cour: 'fall', rating: 0, note: '長いので一旦お休み。続きは381話から。', ago: 300 },
     ].map(({ ago, ...s }) => normalize({ ...s, kana: SAMPLE_KANA[s.title], id: newId(), sample: true, createdAt: now - ago * hour, updatedAt: now - ago * hour }));
   }
 
@@ -379,6 +390,28 @@
   function commit(renderOptions) {
     save();
     render(renderOptions);
+  }
+
+  /* ---------- covers ---------- */
+  // ポスターの一覧は小さいので、起動したらすぐ読み込む。読めなくても頭文字の四角で動く
+  function loadCovers() {
+    fetch(COVERS_URL)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        const list = data && data.covers && typeof data.covers === 'object' ? data.covers : {};
+        for (const [id, path] of Object.entries(list)) {
+          const sourceId = toSourceId(id);
+          if (sourceId && COVER_PATH.test(path)) covers.set(sourceId, path);
+        }
+        if (covers.size) render({ keepOrder: true });
+      })
+      .catch(() => {});
+  }
+
+  // 記録のポスター。選んで登録した作品は ID で、それ以外は作品一覧を読み込んであれば題名で探す
+  function coverFor(item) {
+    const id = item.sourceId || (workFor(item) || {}).id;
+    return (id && covers.get(id)) || '';
   }
 
   /* ---------- catalog ---------- */
@@ -599,14 +632,22 @@
     els.emptyAdd.hidden = state.items.length > 0;
   }
 
-  // ジャケット風の四角。題名から選んだ色の四角に、最初の1文字を出す
-  function tileHTML(title) {
+  // ポスター。ない・読み込めないときは、題名から選んだ色の四角に最初の1文字を出す
+  function tileHTML(title, image) {
     let hash = 0;
     for (const ch of String(title)) hash = (hash * 31 + ch.codePointAt(0)) >>> 0;
     const letter = String(title).normalize('NFKC').replace(/[^\p{L}\p{N}]/gu, '');
     const initial = letter ? [...letter][0].toUpperCase() : '？';
-    return `<div class="tile c${hash % TILE_COLORS}" aria-hidden="true">${esc(initial)}</div>`;
+    const img = image ? `<img src="${COVER_BASE}${esc(image)}" alt="" loading="lazy" decoding="async">` : '';
+    return `<div class="tile c${hash % TILE_COLORS}" aria-hidden="true">${esc(initial)}${img}</div>`;
   }
+
+  // 画像が読み込めなかったら外して、下の色の四角を見せる
+  document.addEventListener('error', (e) => {
+    if (e.target instanceof HTMLImageElement && e.target.parentElement && e.target.parentElement.classList.contains('tile')) {
+      e.target.remove();
+    }
+  }, true);
 
   function progressHTML(item) {
     if (!item.total) return '';
@@ -663,7 +704,7 @@
     ].filter(Boolean).join('<span class="sep" aria-hidden="true">·</span>');
     return `<article class="card s-${item.status}" data-id="${esc(item.id)}">
   <button type="button" class="card-hit" data-action="edit" aria-label="${title}を編集"></button>
-  ${tileHTML(item.title)}
+  ${tileHTML(item.title, coverFor(item))}
   <div class="card-main">
     <h2 class="card-title">${title}</h2>
     <p class="card-sub">${item.sample ? '<span class="tag">サンプル</span>' : ''}${sub}</p>
@@ -755,7 +796,7 @@
       : `<button type="button" class="add-btn" data-work="${work.id}" aria-label="${esc(work.title)}を記録に追加"><svg viewBox="0 0 24 24" width="26" height="26" aria-hidden="true"><circle cx="12" cy="12" r="10.5" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M12 7.5v9M7.5 12h9" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>`;
     const meta = workMeta(work);
     return `<article class="work">
-  ${tileHTML(work.title)}
+  ${tileHTML(work.title, covers.get(work.id))}
   <div class="work-main">
     <h3 class="work-title">${esc(work.title)}</h3>
     ${meta ? `<p class="work-meta">${esc(meta)}</p>` : ''}
@@ -1458,6 +1499,7 @@
   /* ---------- start ---------- */
   load();
   setMode(state.mode);
+  loadCovers();
   if (needKana()) loadCatalog();
 
   try {
