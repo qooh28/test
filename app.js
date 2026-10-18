@@ -11,9 +11,6 @@
   const NAME_MAX = 30;
   const CATALOG_URL = 'catalog.json'; // 配信サービスで見られる作品の一覧（scripts/build_catalog.py で作る）
   const TILE_COLORS = 12; // ジャケット風の四角の色の数（style.css の .c0〜.c11）
-  // ジャケット画像の置き場（AniList）。作品データ・記録には画像のファイル名だけを持つ
-  const COVER_BASE = 'https://s4.anilist.co/file/anilistcdn/media/anime/cover/';
-  const COVER_FILE = /^[\w.-]{1,80}$/;
   const FIND_PAGE = 60; // 「作品をさがす」で一度に並べる件数
   const SUGGEST_LIMIT = 6;
 
@@ -81,14 +78,6 @@
     '薬屋のひとりごと': 'くすりやのひとりごと',
     'ONE PIECE': 'わんぴーす',
   };
-  const SAMPLE_IMAGES = {
-    '葬送のフリーレン': 'bx154587-qQTzQnEJJ3oB.jpg',
-    'ダンジョン飯': 'bx153518-IVXPDY5ph3kO.jpg',
-    'ぼっち・ざ・ろっく！': 'bx130003-HTDmeL4RGeJ4.png',
-    '薬屋のひとりごと': 'bx161645-QLbzHXiYRgV2.jpg',
-    'ONE PIECE': 'bx21-ELSYx3yMPcKM.jpg',
-  };
-
   const $ = (id) => document.getElementById(id);
   const els = {
     pageTitle: $('page-title'),
@@ -203,7 +192,7 @@
   const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ESC[c]);
 
   // 中身が変わったときだけ入れ替える。画面を切り替えるたびに作り直すと、
-  // ジャケット画像や写真が読み込み直しになり、一瞬ちらつくため
+  // 写真（アバター）が読み込み直しになり、一瞬ちらつくため
   const shownHTML = new WeakMap();
   function setHTML(el, html) {
     if (shownHTML.get(el) === html) return;
@@ -211,23 +200,17 @@
     el.innerHTML = html;
   }
 
-  // 一覧用：行ごとに比べて、変わった行だけ作り直す（同じ行は要素ごと残すので、画像を読み込み直さない）
+  // 一覧用：行ごとに比べて、変わった行だけ作り直す（同じ行は要素ごと残す）
   const shownRows = new WeakMap();
   const rowTemplate = document.createElement('template');
   function setRows(el, rows) {
     const prev = shownRows.get(el) || new Map();
-    const prevById = new Map([...el.children].filter((n) => n.dataset.id).map((n) => [n.dataset.id, n]));
     const next = new Map();
     const nodes = rows.map((html) => {
       let node = prev.get(html);
       if (!node || next.has(html)) {
         rowTemplate.innerHTML = html;
         node = rowTemplate.content.firstElementChild;
-        // 中身が変わった行（＋1話など）も、同じジャケット画像は読み込み済みの要素を使い回す
-        const old = node.dataset.id && prevById.get(node.dataset.id);
-        const oldImg = old && old.querySelector('.tile img');
-        const newImg = node.querySelector('.tile img');
-        if (oldImg && newImg && oldImg.getAttribute('src') === newImg.getAttribute('src')) newImg.replaceWith(oldImg);
       }
       next.set(html, node);
       return node;
@@ -301,7 +284,6 @@
       rating,
       note: String(raw.note ?? '').slice(0, 5000),
       kana: String(raw.kana ?? '').slice(0, 200), // 読みがな（タイトル順に使う）
-      image: COVER_FILE.test(raw.image) ? raw.image : '', // ジャケット画像のファイル名
       sourceId: toSourceId(raw.sourceId),
       sample: raw.sample === true,
       createdAt: Number(raw.createdAt) || now,
@@ -318,7 +300,7 @@
       { title: 'ぼっち・ざ・ろっく！', status: 'done', watched: 12, total: 12, year: 2022, cour: 'fall', rating: 5, note: '文化祭ライブの回は何度でも見返せる。', ago: 50 },
       { title: '薬屋のひとりごと', status: 'want', watched: 0, total: 24, year: 2023, cour: 'fall', rating: 0, note: '友だちのおすすめ。', ago: 74 },
       { title: 'ONE PIECE', status: 'dropped', watched: 380, total: null, year: 1999, cour: 'fall', rating: 0, note: '長いので一旦お休み。続きは381話から。', ago: 300 },
-    ].map(({ ago, ...s }) => normalize({ ...s, kana: SAMPLE_KANA[s.title], image: SAMPLE_IMAGES[s.title], id: newId(), sample: true, createdAt: now - ago * hour, updatedAt: now - ago * hour }));
+    ].map(({ ago, ...s }) => normalize({ ...s, kana: SAMPLE_KANA[s.title], id: newId(), sample: true, createdAt: now - ago * hour, updatedAt: now - ago * hour }));
   }
 
   function normalizeProfile(raw) {
@@ -430,12 +412,11 @@
     return catalogPromise;
   }
 
-  // 記録の読みと画像を、作品一覧のものにそろえる（作品を選んで登録した記録か、題名が一致する記録）。
+  // 記録の読みを、作品一覧のものにそろえる（作品を選んで登録した記録か、題名が一致する記録）。
   // 読みが変わったら true を返す（タイトル順の並べ直しに使う）
   function fillKana() {
     if (catalog.status !== 'ready') return false;
     let kanaChanged = false;
-    let changed = false;
     for (const item of state.items) {
       const work = workFor(item);
       const kana = (work && work.kana) || (item.sample && SAMPLE_KANA[item.title]) || '';
@@ -443,13 +424,8 @@
         item.kana = kana;
         kanaChanged = true;
       }
-      const image = (work && work.image) || (item.sample && SAMPLE_IMAGES[item.title]) || '';
-      if (image && item.image !== image) {
-        item.image = image;
-        changed = true;
-      }
     }
-    if (kanaChanged || changed) save();
+    if (kanaChanged) save();
     return kanaChanged;
   }
 
@@ -478,7 +454,6 @@
         media: MEDIA[w.m] ? w.m : '',
         services: (Array.isArray(w.s) ? w.s : []).filter((i) => services[i]).map((i) => services[i].id),
         popularity: Number(w.p) || 0,
-        image: COVER_FILE.test(w.i) ? w.i : '',
       };
       works.push(work);
     }
@@ -624,23 +599,14 @@
     els.emptyAdd.hidden = state.items.length > 0;
   }
 
-  // ジャケット画像。画像がない・読み込めないときは、題名から選んだ色の四角に最初の1文字を出す
-  // size：ライブラリは 'medium'（230px）、検索の一覧は軽い 'small'（100px）
-  function tileHTML(title, image, size) {
+  // ジャケット風の四角。題名から選んだ色の四角に、最初の1文字を出す
+  function tileHTML(title) {
     let hash = 0;
     for (const ch of String(title)) hash = (hash * 31 + ch.codePointAt(0)) >>> 0;
     const letter = String(title).normalize('NFKC').replace(/[^\p{L}\p{N}]/gu, '');
     const initial = letter ? [...letter][0].toUpperCase() : '？';
-    const img = image ? `<img src="${COVER_BASE}${size}/${esc(image)}" alt="" loading="lazy" decoding="async">` : '';
-    return `<div class="tile c${hash % TILE_COLORS}" aria-hidden="true">${esc(initial)}${img}</div>`;
+    return `<div class="tile c${hash % TILE_COLORS}" aria-hidden="true">${esc(initial)}</div>`;
   }
-
-  // 画像が読み込めなかったら外して、下の色の四角を見せる
-  document.addEventListener('error', (e) => {
-    if (e.target instanceof HTMLImageElement && e.target.parentElement && e.target.parentElement.classList.contains('tile')) {
-      e.target.remove();
-    }
-  }, true);
 
   function progressHTML(item) {
     if (!item.total) return '';
@@ -697,7 +663,7 @@
     ].filter(Boolean).join('<span class="sep" aria-hidden="true">·</span>');
     return `<article class="card s-${item.status}" data-id="${esc(item.id)}">
   <button type="button" class="card-hit" data-action="edit" aria-label="${title}を編集"></button>
-  ${tileHTML(item.title, item.image, 'medium')}
+  ${tileHTML(item.title)}
   <div class="card-main">
     <h2 class="card-title">${title}</h2>
     <p class="card-sub">${item.sample ? '<span class="tag">サンプル</span>' : ''}${sub}</p>
@@ -789,7 +755,7 @@
       : `<button type="button" class="add-btn" data-work="${work.id}" aria-label="${esc(work.title)}を記録に追加"><svg viewBox="0 0 24 24" width="26" height="26" aria-hidden="true"><circle cx="12" cy="12" r="10.5" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M12 7.5v9M7.5 12h9" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>`;
     const meta = workMeta(work);
     return `<article class="work">
-  ${tileHTML(work.title, work.image, 'small')}
+  ${tileHTML(work.title)}
   <div class="work-main">
     <h3 class="work-title">${esc(work.title)}</h3>
     ${meta ? `<p class="work-meta">${esc(meta)}</p>` : ''}
@@ -800,7 +766,7 @@
   }
 
   function prefillFromWork(work, status = 'want') {
-    return { title: work.title, kana: work.kana, image: work.image, total: work.total, year: work.year, cour: work.cour, sourceId: work.id, status };
+    return { title: work.title, kana: work.kana, total: work.total, year: work.year, cour: work.cour, sourceId: work.id, status };
   }
 
   /* ---------- account (アカウント) ---------- */
@@ -1207,7 +1173,7 @@
     f.title.value = work.title;
     if (work.total) f.total.value = String(work.total);
     setEditorSeason(work);
-    state.picked = work.sourceId ? { id: work.sourceId, title: work.title, kana: work.kana || '', image: work.image || '' } : null;
+    state.picked = work.sourceId ? { id: work.sourceId, title: work.title, kana: work.kana || '' } : null;
   }
 
   function openEditor(id = null, prefill = null) {
@@ -1326,11 +1292,9 @@
     let sourceId = existing ? existing.sourceId : null;
     // 読みがなは、選んだ作品のもの。編集で題名を変えたら、古い読みがなは捨てる（作品一覧に同じ題名があれば後で入る）
     let kana = existing && existing.title === title ? existing.kana : '';
-    let image = existing && existing.title === title ? existing.image : '';
     if (state.picked && title === state.picked.title) {
       sourceId = state.picked.id;
       kana = state.picked.kana;
-      image = state.picked.image;
     }
     const data = {
       title: title.slice(0, 200),
@@ -1342,7 +1306,6 @@
       rating: state.rating,
       note: f.note.value.trim().slice(0, 5000),
       kana,
-      image,
       sourceId,
       sample: false,
     };
@@ -1496,8 +1459,6 @@
   load();
   setMode(state.mode);
   if (needKana()) loadCatalog();
-  // 画像のない記録があれば、画面を出した後で作品一覧を読み込んで画像をそろえる
-  else if (state.items.some((it) => !it.image)) setTimeout(loadCatalog, 1500);
 
   try {
     if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});

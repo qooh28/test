@@ -1,6 +1,6 @@
 /* オフラインでも開けるように、アプリのファイルを端末に保存しておく。
    ファイルを更新したら CACHE の番号を上げる。 */
-const CACHE = 'anime-log-v16';
+const CACHE = 'anime-log-v17';
 const ASSETS = [
   './',
   'index.html',
