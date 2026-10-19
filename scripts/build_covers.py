@@ -7,7 +7,7 @@
   python3 scripts/build_covers.py --search 0       # TVmaze の検索を使わない（Wikidata とシリーズだけ）
   python3 scripts/build_covers.py --remove 10079   # 権利者から削除を頼まれた作品の画像を外す（公式サイトの画像も。問い合わせはしない）
 
-削除を頼まれた作品は scripts/covers_blocklist.txt に Annict の作品 ID を書いておく。作り直しても付かない。
+削除を頼まれた作品と、別の作品のポスターが付いてしまう作品は、scripts/covers_blocklist.txt に Annict の作品 ID を書いておく。作り直しても付かない。
 
 結びつけ方（間違ったポスターを出さないよう、確かなものだけ。劇場版には付けない）:
   1. Annict の作品の MyAnimeList の番号を、Wikidata で TVmaze の番組 ID に変える（1つに決まるものだけ）。
@@ -42,7 +42,7 @@ import urllib.parse
 import urllib.request
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from build_catalog import WAIT_SECONDS, post  # noqa: E402
+from build_catalog import fetch_works  # noqa: E402
 
 USER_AGENT = "anime-log-covers/1.0 (+https://github.com/qooh28/test)"
 TVMAZE_API = "https://api.tvmaze.com"
@@ -53,14 +53,7 @@ WIKIDATA_SPARQL = "https://query.wikidata.org/sparql"
 # P4086 = MyAnimeList の作品 ID、P8600 = TVmaze の番組 ID
 WIKIDATA_QUERY = "SELECT ?mal ?tvmaze WHERE { ?item wdt:P4086 ?mal ; wdt:P8600 ?tvmaze . }"
 
-WORKS_QUERY = """
-query ($after: String) {
-  searchWorks(orderBy: { field: WATCHERS_COUNT, direction: DESC }, first: 200, after: $after) {
-    pageInfo { hasNextPage endCursor }
-    nodes { annictId title titleEn media seasonName seasonYear malAnimeId seriesList { nodes { annictId } } }
-  }
-}
-"""
+WORK_FIELDS = "annictId title titleEn media seasonName seasonYear malAnimeId seriesList { nodes { annictId } }"
 
 # 季の始まりの月。その前の月から次の月までに始まった番組を、その季の番組とみなす（例：秋＝9〜11月、冬＝12〜2月）
 SEASON_MONTH = {"WINTER": 1, "SPRING": 4, "SUMMER": 7, "AUTUMN": 10}
@@ -84,17 +77,7 @@ def load_or(path, make):
 
 
 def fetch_annict_works():
-    works, after = [], None
-    while True:
-        data = post(WORKS_QUERY, {"after": after})["searchWorks"]
-        works.extend(data["nodes"])
-        print(f"\rAnnict: {len(works)}作品まで取得", end="", file=sys.stderr, flush=True)
-        if not data["pageInfo"]["hasNextPage"]:
-            break
-        after = data["pageInfo"]["endCursor"]
-        time.sleep(WAIT_SECONDS)
-    print(file=sys.stderr)
-    return works
+    return fetch_works(WORK_FIELDS)
 
 
 def get_json(url, headers=None, attempts=8):

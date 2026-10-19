@@ -64,14 +64,16 @@ SEASON = {"WINTER": "winter", "SPRING": "spring", "SUMMER": "summer", "AUTUMN": 
 
 WORK_FIELDS = "annictId title titleKana titleEn media seasonName seasonYear episodesCount watchersCount"
 
-ALL_WORKS_QUERY = """
-query ($after: String) {
-  searchWorks(orderBy: { field: WATCHERS_COUNT, direction: DESC }, first: 200, after: $after) {
-    pageInfo { hasNextPage endCursor }
-    nodes { %s }
+IDS_PER_REQUEST = 200  # 作品を取るとき、1回に問い合わせる作品 ID の数
+
+# いちばん新しく登録された作品（作品 ID がいちばん大きい）を知るため
+LAST_WORKS_QUERY = """
+query {
+  searchWorks(orderBy: { field: CREATED_AT, direction: DESC }, first: 20) {
+    nodes { annictId }
   }
 }
-""" % WORK_FIELDS
+"""
 
 SCAN_QUERY = """
 query ($after: String) {
@@ -192,18 +194,22 @@ def fetch_channel_works(ref):
         time.sleep(WAIT_SECONDS)
 
 
-def fetch_all_works():
+def fetch_works(fields, label="Annict"):
+    """Annict の全作品を、作品 ID の範囲ごとに取り、人気順（見ている人の数が同じなら作品 ID 順）に並べて返す。
+    人気順のページ送りで取ると、見ている人の数が同じ作品の並びが問い合わせのたびに変わるので、
+    同じ作品が重複し、そのぶんほかの作品が抜ける（2026-10 に試したら約2,000作品が抜けた）"""
+    if "watchersCount" not in fields.split():
+        fields += " watchersCount"
+    query = "query ($ids: [Int!]) { searchWorks(annictIds: $ids, first: %d) { nodes { %s } } }" % (IDS_PER_REQUEST, fields)
+    last_id = max(work["annictId"] for work in post(LAST_WORKS_QUERY, {})["searchWorks"]["nodes"])
     works = []
-    after = None
-    while True:
-        data = post(ALL_WORKS_QUERY, {"after": after})["searchWorks"]
-        works.extend(data["nodes"])
-        print(f"\r{len(works)}作品まで取得", end="", file=sys.stderr, flush=True)
-        if not data["pageInfo"]["hasNextPage"]:
-            break
-        after = data["pageInfo"]["endCursor"]
+    for start in range(1, last_id + 1, IDS_PER_REQUEST):
+        ids = list(range(start, min(start + IDS_PER_REQUEST, last_id + 1)))
+        works.extend(post(query, {"ids": ids})["searchWorks"]["nodes"])
+        print(f"\r{label}: 作品 ID {ids[-1]}/{last_id} まで取得（{len(works)}作品）", end="", file=sys.stderr, flush=True)
         time.sleep(WAIT_SECONDS)
     print(file=sys.stderr)
+    works.sort(key=lambda work: (-(work.get("watchersCount") or 0), work["annictId"]))
     return works
 
 
@@ -257,7 +263,7 @@ def write_catalog(entries, services, out_path, generated_at=None):
 
 
 def build_titles(out_path):
-    works = [w for w in fetch_all_works() if (w.get("title") or "").strip()]
+    works = [w for w in fetch_works(WORK_FIELDS) if (w.get("title") or "").strip()]
     entries = [to_entry(w, ()) for w in works]
     write_catalog(entries, [], out_path)
 

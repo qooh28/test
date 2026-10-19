@@ -72,16 +72,18 @@ python3 scripts/build_covers.py --cache .cache/covers
 
 #### 公式サイトの画像（official_images.json）
 
-TVmaze のポスターがない作品は、Annict の作品データに記録された公式サイトの画像（og:image など）を出します。
+TVmaze のポスターがない作品は、Annict の作品データに記録された公式サイトの画像を出します。おすすめの画像（`recommendedImageUrl`）を先に使い、それが空・読めない作品は公式サイトの og:image（`facebookOgImageUrl`）を使います。
 アプリは画像を保存せず公式サイトから直接読み込み（リファラーは送らない）、作品の編集画面に「画像の出典：公式サイト」と権利者の表記を出します。
 画像の著作権は各作品の権利者にあり、利用の許諾を受けたものではありません（あにふぉりお・AniHub などと同じ考え方）。
 
 ```sh
-# covers.json を作ったあとに実行する（https で、実際に画像として読めたものだけを使う）
+# covers.json を作ったあとに実行する（http の URL は https に直して試し、実際に画像として読めたものだけを使う）
 python3 scripts/build_official_images.py --cache .cache/covers
 ```
 
 - サイト共通の画像（多くの作品が同じ画像の URL を持つもの）は、作品の画像ではないので使いません。
+- 公式サイトと別のドメインにある画像と、同じサイトでも作品のページのフォルダの外にある画像（会社共通の宣伝画像など）は使いません。
+- 同じ画像を4作品以上が持つときは、みな Annict で同じシリーズの作品のときだけ使います（1期・2期など）。公開年の違う劇場版どうしが同じ画像を持つとき（毎年の映画で公式サイトを使い回し、画像が最新作のものになっている）は、劇場版には使いません。
 
 #### 権利者から画像の削除を頼まれたら
 
@@ -93,6 +95,7 @@ python3 scripts/build_covers.py --remove 10079 --note "issue #3 で依頼"   # c
 ```
 
 `scripts/covers_blocklist.txt` に書いた作品は、covers.json・official_images.json を作り直しても付きません。
+別の作品の画像が付いてしまったとき（同じシリーズのスピンオフに本編のポスターが付くなど）も、同じ方法で外します。
 - 以前は [AniList](https://anilist.co) の画像を使っていましたが、2026-10-18 にやめました。
   AniList の API の利用規約（https://docs.anilist.co/guide/terms-of-use ）が、アニメの記録アプリ（"anime and manga list or tracker services"）での利用と、データの大量取得を禁じているためです。
 
