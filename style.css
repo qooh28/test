@@ -201,7 +201,7 @@ button.avatar:active .face { filter: brightness(0.85); }
 .search input {
   width: 100%;
   height: 44px;
-  padding: 0 14px 0 42px;
+  padding: 0 44px 0 42px; /* 右は × ボタンのぶん */
   border: 0;
   border-radius: 6px;
   background: var(--line);
@@ -210,6 +210,25 @@ button.avatar:active .face { filter: brightness(0.85); }
   font-weight: 500;
 }
 .search input::placeholder { color: var(--sub); }
+/* ブラウザが付ける消すボタンは出さない（自前の × と二重になるため） */
+.search input::-webkit-search-cancel-button { -webkit-appearance: none; appearance: none; display: none; }
+/* 入力した文字を一度に消す × ボタン（文字があるときだけ出る）。押しやすいよう 44px 四方 */
+.search-clear {
+  position: absolute;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--sub);
+  cursor: pointer;
+}
+.search-clear path { stroke: var(--line); }
 /* 検索画面の入力欄は白く大きく */
 body[data-mode="find"] .search input {
   height: 48px;
@@ -219,6 +238,8 @@ body[data-mode="find"] .search input {
 }
 body[data-mode="find"] .search input::placeholder { color: #535353; }
 body[data-mode="find"] .search-icon { color: #121212; }
+body[data-mode="find"] .search-clear { color: #535353; }
+body[data-mode="find"] .search-clear path { stroke: var(--text); }
 
 /* ---------- filter chips ---------- */
 .tabbar {

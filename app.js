@@ -94,6 +94,7 @@
     summary: $('summary'),
     modes: $('modes'),
     search: $('search'),
+    searchClear: $('search-clear'),
     tabbar: document.querySelector('.tabbar'),
     tabs: $('tabs'),
     serviceTabs: $('service-tabs'),
@@ -1179,7 +1180,13 @@
     render();
   });
 
+  // 入力欄に文字があるときだけ × ボタンを出す
+  function syncSearchClear() {
+    els.searchClear.hidden = !els.search.value;
+  }
+
   els.search.addEventListener('input', () => {
+    syncSearchClear();
     const value = els.search.value.trim();
     if (state.mode === 'find') {
       state.find.query = value;
@@ -1188,6 +1195,14 @@
       state.query = value;
     }
     render();
+  });
+
+  // 押しても入力欄からフォーカスが外れない（iPhone でキーボードが閉じて開き直さない）ようにする
+  els.searchClear.addEventListener('mousedown', (e) => e.preventDefault());
+  els.searchClear.addEventListener('click', () => {
+    els.search.value = '';
+    els.search.dispatchEvent(new Event('input'));
+    els.search.focus();
   });
 
   els.sort.addEventListener('change', () => {
@@ -1203,6 +1218,7 @@
     state.mode = mode;
     savePrefs();
     els.search.value = mode === 'find' ? state.find.query : state.query;
+    syncSearchClear();
     els.search.placeholder = mode === 'find' ? '作品名で検索（ひらがなでも探せます）' : 'ライブラリ内を検索';
     if (mode === 'find') loadCatalog();
     render();
@@ -1445,6 +1461,7 @@
         state.tab = 'all';
         state.query = '';
         els.search.value = '';
+        syncSearchClear();
         savePrefs();
       }
     }
