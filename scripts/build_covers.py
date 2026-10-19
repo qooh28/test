@@ -5,7 +5,7 @@
   python3 scripts/build_covers.py                  # covers.json を作る
   python3 scripts/build_covers.py --cache DIR      # 取ったデータを DIR に残し、次は続きから取る
   python3 scripts/build_covers.py --search 0       # TVmaze の検索を使わない（Wikidata とシリーズだけ）
-  python3 scripts/build_covers.py --remove 10079   # 権利者から削除を頼まれた作品のポスターを外す（問い合わせはしない）
+  python3 scripts/build_covers.py --remove 10079   # 権利者から削除を頼まれた作品の画像を外す（公式サイトの画像も。問い合わせはしない）
 
 削除を頼まれた作品は scripts/covers_blocklist.txt に Annict の作品 ID を書いておく。作り直しても付かない。
 
@@ -394,6 +394,15 @@ def remove(path, ids, note):
         data = json.load(fp)
     covers = {int(k): v for k, v in data["covers"].items() if int(k) not in set(ids)}
     write_covers(path, covers, data.get("generatedAt"))
+    # 公式サイトの画像の一覧（build_official_images.py で作る）からも外す
+    official = os.path.join(os.path.dirname(os.path.abspath(path)), "official_images.json")
+    if os.path.exists(official):
+        with open(official, encoding="utf-8") as fp:
+            data = json.load(fp)
+        data["images"] = {k: v for k, v in data["images"].items() if int(k) not in set(ids)}
+        with open(official, "w", encoding="utf-8") as fp:
+            json.dump(data, fp, ensure_ascii=False, separators=(",", ":"))
+        print(f"{official} からも外しました", file=sys.stderr)
 
 
 def main():

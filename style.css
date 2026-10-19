@@ -959,6 +959,10 @@ a.btn { text-decoration: none; } /* リンクをボタンの見た目で出す�
 .field textarea { resize: vertical; min-height: 6.5em; }
 .field input::placeholder, .field textarea::placeholder { color: var(--dim); }
 .error { margin: 0; color: var(--danger); font-size: var(--fs-sm); font-weight: 700; }
+/* 作品の画像の出典（公式サイトの画像は、権利者の表記も添える） */
+.image-credit { margin: 0; color: var(--dim); font-size: var(--fs-xs); overflow-wrap: anywhere; }
+.image-credit a { color: var(--sub); }
+.image-credit .copyright { margin-left: 0.6em; }
 .season-note {
   margin: 0;
   color: var(--sub);

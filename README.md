@@ -16,7 +16,8 @@ iPhone のホーム画面に追加すると、アプリのように使えます�
 - 一覧のカードから ＋1話／−1話
 - 「作品をさがす」：Annict に載っているアニメ作品を、作品名で探して登録できる（人気順／評価順（自分がつけた星の数）／放送時期が新しい順／タイトル順）
 - 作品名を入力すると候補が出て、話数・放送時期が自動で入る
-- テレビアニメは TVmaze のポスターを表示。ポスターがない作品（劇場版など）や読み込めないときは、題名の1文字を出した色付きの四角（下の「ポスター画像について」）
+- テレビアニメは TVmaze のポスター、TVmaze にない作品（劇場版など）は各作品の公式サイトの画像を出典つきで表示。どちらもない・読み込めないときは、題名の1文字を出した色付きの四角（下の「ポスター画像について」）
+- 利用規約（`terms.html`。メニューの「利用規約」から開く）
 - アカウント：名前と、写真ライブラリから選んだ写真のアイコン（写真は端末の中で 256px の正方形に切り抜いて保存し、どこにも送らない）
 - ランク：見た話数（記録した全作品の「見た話数」の合計）で11段階（ノーマル → ルーキー 100話 → アマチュア 300話 → ベテラン 500話 → ブロンズ 1,000話 → シルバー 2,000話 → ゴールド 3,000話 → プラチナ 4,000話 → ダイアモンド 5,000話 → ミスリル → オリハルコン）。ミスリルとオリハルコンは作品数（「見終わった」作品だけ）の条件もあり、画面では達成条件を伏せる。名前もそのランクになるまで「？？？」にする。定義は `app.js` の `RANKS`。アカウント画面の ⓘ で一覧と達成条件を見られる。記録の数字（見終わった作品・視聴中の作品・見たい作品・中断した作品・見た話数・平均の星）も出す
 - バックアップの書き出しと読み込み（JSON ファイル。プロフィールも入る）
@@ -69,16 +70,29 @@ python3 scripts/build_covers.py --cache .cache/covers
 - `covers.json` は TVmaze のデータから作ったものなので CC BY-SA 4.0 です。Annict のデータ（`catalog.json`）とは分けて置いています。
 - ポスターの著作権は、それぞれの作品の権利者にあります。アプリにも「作品画像の著作権は、各作品の権利者に帰属します。」と出しています。
 
+#### 公式サイトの画像（official_images.json）
+
+TVmaze のポスターがない作品は、Annict の作品データに記録された公式サイトの画像（og:image など）を出します。
+アプリは画像を保存せず公式サイトから直接読み込み（リファラーは送らない）、作品の編集画面に「画像の出典：公式サイト」と権利者の表記を出します。
+画像の著作権は各作品の権利者にあり、利用の許諾を受けたものではありません（あにふぉりお・AniHub などと同じ考え方）。
+
+```sh
+# covers.json を作ったあとに実行する（https で、実際に画像として読めたものだけを使う）
+python3 scripts/build_official_images.py --cache .cache/covers
+```
+
+- サイト共通の画像（多くの作品が同じ画像の URL を持つもの）は、作品の画像ではないので使いません。
+
 #### 権利者から画像の削除を頼まれたら
 
 アプリの「…」→「画像の削除を依頼する」から、GitHub の課題（Issues）に依頼が届きます。
 作品を確かめたら、Annict の作品 ID を指定してポスターを外し、公開し直します。
 
 ```sh
-python3 scripts/build_covers.py --remove 10079 --note "issue #3 で依頼"   # covers.json から外し、covers_blocklist.txt に記録
+python3 scripts/build_covers.py --remove 10079 --note "issue #3 で依頼"   # covers.json と official_images.json から外し、covers_blocklist.txt に記録
 ```
 
-`scripts/covers_blocklist.txt` に書いた作品は、covers.json を作り直しても付きません。
+`scripts/covers_blocklist.txt` に書いた作品は、covers.json・official_images.json を作り直しても付きません。
 - 以前は [AniList](https://anilist.co) の画像を使っていましたが、2026-10-18 にやめました。
   AniList の API の利用規約（https://docs.anilist.co/guide/terms-of-use ）が、アニメの記録アプリ（"anime and manga list or tracker services"）での利用と、データの大量取得を禁じているためです。
 
@@ -87,7 +101,8 @@ python3 scripts/build_covers.py --remove 10079 --note "issue #3 で依頼"   # c
 - ストアのスクリーンショットに、実在の作品の画像を写さない（Apple は権利のない作品の画像が写ったスクリーンショットを認めていない）。
   URL の最後に `?screenshot` を付けて開くと（例：https://qooh28.github.io/test/?screenshot ）、架空の作品だけを並べ、ポスターを出さない表示になります。
   この表示では記録・設定・プロフィールを一切保存しないので、自分の記録はそのまま残ります。
-- 画像の出典（TVmaze）と「作品画像の著作権は、各作品の権利者に帰属します。」をアプリに出しておく（出してある）。
+- 画像の出典（TVmaze・公式サイト）と「作品画像の著作権は、各作品の権利者に帰属します。」をアプリに出しておく（出してある）。
+- 利用規約（`terms.html`）を用意しておく（ある）。課金・広告を始める前に、専門家に一度見てもらうと安心。
 - 権利者からの削除依頼を受ける窓口を用意しておく（「…」→「画像の削除を依頼する」）。
 
 ### 配信サービスの情報について
@@ -132,6 +147,9 @@ git push origin master:gh-pages   # 1〜2分で公開中のサイトに反映さ
 | `scripts/readings.py` | タイトル順に使う読み（ひらがな）を作る |
 | `covers.json` | 作品ごとの TVmaze のポスター（`scripts/build_covers.py` で作る。CC BY-SA 4.0） |
 | `scripts/build_covers.py` | Annict・Wikidata・TVmaze から `covers.json` を作るスクリプト |
-| `scripts/covers_blocklist.txt` | 権利者から削除を頼まれ、ポスターを付けない作品 |
+| `scripts/covers_blocklist.txt` | 権利者から削除を頼まれ、画像を付けない作品 |
+| `official_images.json` | TVmaze にない作品の、公式サイトの画像の URL・権利者の表記（`scripts/build_official_images.py` で作る） |
+| `scripts/build_official_images.py` | Annict から `official_images.json` を作るスクリプト |
+| `terms.html` | 利用規約 |
 
 ビルドは不要です。ファイルをそのまま置けば動きます。

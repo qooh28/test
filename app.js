@@ -17,6 +17,9 @@
   const COVERS_URL = 'covers.json';
   const COVER_BASE = 'https://static.tvmaze.com/uploads/images/medium_portrait/';
   const COVER_PATH = /^\d{1,6}\/\d{1,12}\.(?:jpe?g|png)$/;
+  // TVmaze のポスターがない作品は、公式サイトの画像を出典つきで出す。official_images.json は
+  // Annict の作品 ID → { u: 画像の URL, c: 権利者の表記, s: 公式サイト }（scripts/build_official_images.py で作る）
+  const OFFICIAL_URL = 'official_images.json';
   const TILE_COLORS = 12; // ジャケット風の四角の色の数（style.css の .c0〜.c11）
   const FIND_PAGE = 60; // 「作品をさがす」で一度に並べる件数
   const SUGGEST_LIMIT = 6;
@@ -164,6 +167,7 @@
     watched: $('f-watched'),
     total: $('f-total'),
     season: $('f-season'),
+    credit: $('f-credit'),
     note: $('f-note'),
   };
 
@@ -194,6 +198,7 @@
     generatedAt: '',
   };
   const covers = new Map(); // Annict の作品 ID → TVmaze の画像のパス
+  const officialImages = new Map(); // Annict の作品 ID → { url, copyright, site }（公式サイトの画像）
 
   /* ---------- helpers ---------- */
   const ESC = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
@@ -421,26 +426,66 @@
   }
 
   /* ---------- covers ---------- */
-  // ポスターの一覧は小さいので、起動したらすぐ読み込む。読めなくても頭文字の四角で動く
+  const getJSON = (url) => fetch(url).then((res) => (res.ok ? res.json() : null)).catch(() => null);
+  const webURL = (value, protocols) => {
+    try {
+      const url = new URL(String(value));
+      return protocols.includes(url.protocol) && url.href.length <= 500 ? url.href : '';
+    } catch {
+      return '';
+    }
+  };
+
+  // 画像の一覧は小さいので、起動したらすぐ読み込む。読めなくても頭文字の四角で動く
   function loadCovers() {
     if (SCREENSHOT_MODE) return; // スクリーンショットに作品の画像を写さない
-    fetch(COVERS_URL)
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data) => {
-        const list = data && data.covers && typeof data.covers === 'object' ? data.covers : {};
-        for (const [id, path] of Object.entries(list)) {
-          const sourceId = toSourceId(id);
-          if (sourceId && COVER_PATH.test(path)) covers.set(sourceId, path);
-        }
-        if (covers.size) render({ keepOrder: true });
-      })
-      .catch(() => {});
+    Promise.all([getJSON(COVERS_URL), getJSON(OFFICIAL_URL)]).then(([tvmaze, official]) => {
+      const list = tvmaze && tvmaze.covers && typeof tvmaze.covers === 'object' ? tvmaze.covers : {};
+      for (const [id, path] of Object.entries(list)) {
+        const sourceId = toSourceId(id);
+        if (sourceId && COVER_PATH.test(path)) covers.set(sourceId, path);
+      }
+      const images = official && official.images && typeof official.images === 'object' ? official.images : {};
+      for (const [id, entry] of Object.entries(images)) {
+        const sourceId = toSourceId(id);
+        const url = entry && webURL(entry.u, ['https:']);
+        if (!sourceId || !url || covers.has(sourceId)) continue;
+        officialImages.set(sourceId, {
+          url,
+          copyright: typeof entry.c === 'string' ? entry.c.slice(0, 200) : '',
+          site: webURL(entry.s, ['https:', 'http:']),
+        });
+      }
+      if (covers.size || officialImages.size) render({ keepOrder: true });
+    });
   }
 
-  // 記録のポスター。選んで登録した作品は ID で、それ以外は作品一覧を読み込んであれば題名で探す
+  // 作品の画像：TVmaze のポスター、なければ公式サイトの画像
+  function coverOf(id) {
+    if (!id) return null;
+    if (covers.has(id)) return { src: COVER_BASE + covers.get(id), from: 'tvmaze' };
+    const official = officialImages.get(id);
+    return official ? { src: official.url, from: 'official', ...official } : null;
+  }
+
+  // 記録の画像。選んで登録した作品は ID で、それ以外は作品一覧を読み込んであれば題名で探す
   function coverFor(item) {
-    const id = item.sourceId || (workFor(item) || {}).id;
-    return (id && covers.get(id)) || '';
+    return coverOf(item.sourceId || (workFor(item) || {}).id);
+  }
+
+  // 画像の出典（作品の編集画面に出す）
+  function creditHTML(cover) {
+    if (!cover) return '';
+    if (cover.from === 'tvmaze') return 'ポスター：<a href="https://www.tvmaze.com" target="_blank" rel="noopener">TVmaze</a>';
+    const site = cover.site ? `<a href="${esc(cover.site)}" target="_blank" rel="noopener">公式サイト</a>` : '公式サイト';
+    const mark = cover.copyright && !/^(?:©|\(c\))/i.test(cover.copyright) ? `©${cover.copyright}` : cover.copyright;
+    return `画像の出典：${site}${mark ? `<span class="copyright">${esc(mark)}</span>` : ''}`;
+  }
+
+  function setEditorCredit(id) {
+    const html = creditHTML(coverOf(id));
+    f.credit.innerHTML = html;
+    f.credit.hidden = !html;
   }
 
   /* ---------- catalog ---------- */
@@ -661,13 +706,15 @@
     els.emptyAdd.hidden = state.items.length > 0;
   }
 
-  // ポスター。ない・読み込めないときは、題名から選んだ色の四角に最初の1文字を出す
-  function tileHTML(title, image) {
+  // ポスター（cover）。ない・読み込めないときは、題名から選んだ色の四角に最初の1文字を出す
+  function tileHTML(title, cover) {
     let hash = 0;
     for (const ch of String(title)) hash = (hash * 31 + ch.codePointAt(0)) >>> 0;
     const letter = String(title).normalize('NFKC').replace(/[^\p{L}\p{N}]/gu, '');
     const initial = letter ? [...letter][0].toUpperCase() : '？';
-    const img = image ? `<img src="${COVER_BASE}${esc(image)}" alt="" loading="lazy" decoding="async">` : '';
+    // 公式サイトの画像は、よそのサイトからの読み込みを断るサイトがあるので、リファラーを送らない
+    const referrer = cover && cover.from === 'official' ? ' referrerpolicy="no-referrer"' : '';
+    const img = cover ? `<img src="${esc(cover.src)}" alt="" loading="lazy" decoding="async"${referrer}>` : '';
     return `<div class="tile c${hash % TILE_COLORS}" aria-hidden="true">${esc(initial)}${img}</div>`;
   }
 
@@ -825,7 +872,7 @@
       : `<button type="button" class="add-btn" data-work="${work.id}" aria-label="${esc(work.title)}を記録に追加"><svg viewBox="0 0 24 24" width="26" height="26" aria-hidden="true"><circle cx="12" cy="12" r="10.5" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M12 7.5v9M7.5 12h9" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>`;
     const meta = workMeta(work);
     return `<article class="work">
-  ${tileHTML(work.title, covers.get(work.id))}
+  ${tileHTML(work.title, coverOf(work.id))}
   <div class="work-main">
     <h3 class="work-title">${esc(work.title)}</h3>
     ${meta ? `<p class="work-meta">${esc(meta)}</p>` : ''}
@@ -1243,6 +1290,7 @@
     f.title.value = work.title;
     if (work.total) f.total.value = String(work.total);
     setEditorSeason(work);
+    setEditorCredit(work.sourceId);
     state.picked = work.sourceId ? { id: work.sourceId, title: work.title, kana: work.kana || '' } : null;
   }
 
@@ -1257,6 +1305,7 @@
     f.total.value = item && item.total ? String(item.total) : '';
     state.baseSeason = item && item.year ? { year: item.year, cour: item.cour } : null;
     setEditorSeason(state.baseSeason);
+    setEditorCredit(item ? item.sourceId || (workFor(item) || {}).id : null);
     setRating(item ? item.rating : 0);
     f.note.value = item ? item.note : '';
     if (prefill) fillWorkFields(prefill);
@@ -1343,6 +1392,8 @@
     if (state.picked && f.title.value.trim() !== state.picked.title) {
       state.picked = null;
       setEditorSeason(state.baseSeason);
+      const editing = state.editingId && findItem(state.editingId);
+      setEditorCredit(editing ? editing.sourceId || (workFor(editing) || {}).id : null);
     }
     renderSuggest();
   });
