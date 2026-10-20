@@ -12,7 +12,8 @@
 build_covers.py --remove で covers_blocklist.txt に書く（この一覧からも外れる）。
 
 http の URL は https に直して試し、実際に画像として読めたものだけを使う（古い公式サイトは消えていることが多い）。
-同じ画像を多くの作品が持っているもの（サイト共通の画像）と、公式サイトと別のドメインにある画像は使わない。
+同じ画像を多くの作品が持っているもの（サイト共通の画像）と、公式サイトと別のドメインにある画像、
+X（旧 Twitter）の画像（公式アカウントのプロフィール画像）は使わない。
 """
 
 import argparse
@@ -45,6 +46,9 @@ GENERIC_NAME = re.compile(r"logo|default|noimage|no_image|favicon|dummy|screensh
 # 画像は公式サイトと同じドメインにあるものだけを使う（Wikipedia の画像や、ドメインが切れて別のサイトになった画像を除くため）。
 # 配信サービスの作品ページは、画像を別ドメインの画像用サーバーに置いているので、その組み合わせだけ認める
 IMAGE_DOMAINS = {"netflix.com": {"nflxso.net"}, "disneyplus.com": {"disney-plus.net"}}
+# X（旧 Twitter）の画像は使わない。Annict の画像の URL には、公式 X アカウントのプロフィール画像も入っている
+# （2026-10-20 Annict の返事）。公式サイトが X のアカウントの作品でも、画像はプロフィールのアイコンなので使わない
+X_DOMAINS = {"twimg.com", "twitter.com", "x.com"}
 JP_SECOND_LEVEL = {"co", "ne", "or", "ac", "go", "ed", "gr", "lg", "ad"}
 # 画像の URL を探す欄（使う順）。recommendedImageUrl が空で og:image だけが入っている作品も多い
 IMAGE_FIELDS = ("recommendedImageUrl", "facebookOgImageUrl")
@@ -162,7 +166,7 @@ def image_candidates(work):
     urls = []
     for field in IMAGE_FIELDS:
         url = https_url(image.get(field))
-        if url and url not in urls and same_site(url, work.get("officialSiteUrl")):
+        if url and url not in urls and domain_of(url) not in X_DOMAINS and same_site(url, work.get("officialSiteUrl")):
             urls.append(url)
     return urls
 
