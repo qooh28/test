@@ -317,6 +317,12 @@ body[data-mode="find"] .search-clear path { stroke: var(--text); }
 }
 .notice p { margin: 0; flex: 1 1 16em; min-width: 0; }
 .notice.warn { color: var(--danger); }
+/* ホーム画面への追加のしかた（「追加のしかた」を押すと開く） */
+#install-note > p { flex-basis: 100%; } /* 文は全幅、ボタンはその下に並べる */
+.install-steps { flex: 1 1 100%; display: grid; gap: 8px; justify-items: start; }
+.install-steps ol { margin: 0; padding-left: 1.4em; display: grid; gap: 4px; }
+.install-steps p { flex: none; }
+.menu-sec .backup-status.due { color: var(--text); font-weight: 700; }
 .pill-btn {
   height: 32px;
   padding: 0 14px;

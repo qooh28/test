@@ -8,6 +8,10 @@
   // ポスターを出さず、記録・設定・プロフィールを一切保存しない（自分の記録はそのまま残る）
   const SCREENSHOT_MODE = new URLSearchParams(location.search).has('screenshot');
   const PROFILE_KEY = 'anime-log:profile'; // アカウント（名前と写真）。今はこの端末の中だけ
+  // 案内を閉じた日・バックアップを書き出した日（ミリ秒）
+  const NOTICE_KEY = 'anime-log:notice';
+  const INSTALL_NOTE_PAUSE = 14 * 24 * 60 * 60 * 1000; // 「閉じる」を押したら、この間は案内を出さない
+  const BACKUP_DUE = 30 * 24 * 60 * 60 * 1000; // 最後に書き出してからこれ以上たったら、メニューで書き出しを促す
   const AVATAR_SIZE = 256; // 写真は正方形に切り抜いて、この大きさ（px）の JPEG にして保存する
   const AVATAR_DATA = /^data:image\/(?:jpeg|png|webp);base64,[A-Za-z0-9+/]+=*$/;
   const AVATAR_MAX = 400000; // 保存する写真の上限（文字数）。256px の JPEG なら 20〜60KB ほど
@@ -102,6 +106,9 @@
     findView: $('find-view'),
     storageWarn: $('storage-warn'),
     sampleNote: $('sample-note'),
+    installNote: $('install-note'),
+    installSteps: $('install-steps'),
+    backupStatus: $('backup-status'),
     toolbar: $('toolbar'),
     resultCount: $('result-count'),
     sort: $('sort'),
@@ -1499,7 +1506,71 @@
 
   els.fab.addEventListener('click', () => openEditor());
   els.emptyAdd.addEventListener('click', () => openEditor());
-  $('open-menu').addEventListener('click', () => els.menu.showModal());
+  $('open-menu').addEventListener('click', () => {
+    renderBackupStatus();
+    els.menu.showModal();
+  });
+
+  /* ---------- keeping records safe ---------- */
+  // Safari は、Safari を使った日が7日たつまでにこのサイトを開かないと、保存したデータを消す（ホーム画面のアプリは消さない）。
+  // ホーム画面のアプリで開いているか、ブラウザが保存を約束している（persisted）ときは、案内を出さない
+  function isStandalone() {
+    try {
+      return window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+    } catch {
+      return false;
+    }
+  }
+
+  async function storagePersisted() {
+    try {
+      return !!(navigator.storage && navigator.storage.persisted && (await navigator.storage.persisted()));
+    } catch {
+      return false;
+    }
+  }
+
+  async function updateInstallNote() {
+    const notice = readJSON(NOTICE_KEY) || {};
+    const paused = Date.now() - (Number(notice.installClosedAt) || 0) < INSTALL_NOTE_PAUSE;
+    const show = !SCREENSHOT_MODE && !paused && !isStandalone() && !(await storagePersisted());
+    els.installNote.hidden = !show;
+  }
+
+  function saveNotice(patch) {
+    writeJSON(NOTICE_KEY, { ...(readJSON(NOTICE_KEY) || {}), ...patch });
+  }
+
+  $('install-how').addEventListener('click', (e) => {
+    const open = els.installSteps.hidden;
+    // 記録があるときだけ、ホーム画面のアプリへ記録を移すしかたを出す
+    const hasRecords = state.items.some((it) => !it.sample);
+    $('install-move').hidden = !hasRecords;
+    $('install-export').hidden = !hasRecords;
+    els.installSteps.hidden = !open;
+    e.currentTarget.setAttribute('aria-expanded', String(open));
+  });
+  $('install-close').addEventListener('click', () => {
+    saveNotice({ installClosedAt: Date.now() });
+    els.installNote.hidden = true;
+  });
+  $('install-export').addEventListener('click', () => $('export').click());
+
+  function formatDay(ms) {
+    const d = new Date(ms);
+    return `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日`;
+  }
+
+  // メニューのバックアップの所に、最後に書き出した日を出す。記録があって長く書き出していなければ促す
+  function renderBackupStatus() {
+    const last = Number((readJSON(NOTICE_KEY) || {}).backupAt) || 0;
+    const hasRecords = state.items.some((it) => !it.sample);
+    const due = hasRecords && (!last || Date.now() - last > BACKUP_DUE);
+    let text = last ? `最後に書き出した日：${formatDay(last)}` : 'まだバックアップを書き出していません。';
+    if (due) text += last ? '（しばらく書き出していません。書き出しておくと安心です）' : '書き出しておくと安心です。';
+    els.backupStatus.textContent = text;
+    els.backupStatus.classList.toggle('due', due);
+  }
 
   /* ---------- samples ---------- */
   function clearSamples() {
@@ -1538,6 +1609,8 @@
     try {
       if (navigator.canShare && navigator.canShare({ files: [file] })) {
         await navigator.share({ files: [file], title: 'アニメ視聴記録のバックアップ' });
+        saveNotice({ backupAt: Date.now() });
+        renderBackupStatus();
         toast('バックアップを書き出しました');
         return;
       }
@@ -1552,6 +1625,8 @@
     document.body.append(a);
     a.click();
     a.remove();
+    saveNotice({ backupAt: Date.now() });
+    renderBackupStatus();
     setTimeout(() => URL.revokeObjectURL(url), 10000);
   });
 
@@ -1601,9 +1676,10 @@
   if (needKana()) loadCatalog();
 
   try {
-    if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
+    if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {}).then(updateInstallNote);
+    else updateInstallNote();
   } catch {
-    /* 使えない環境では何もしない */
+    updateInstallNote();
   }
 
   try {

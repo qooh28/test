@@ -64,6 +64,21 @@
   <div class="notice warn" id="storage-warn" hidden>
     <p>この環境では記録を保存できません。プライベートブラウズを使っている場合は、通常のタブで開いてください。</p>
   </div>
+  <div class="notice" id="install-note" hidden>
+    <p>記録はこのブラウザの中にだけ保存されます。iPhone の Safari では、このページを7日ほど開かないと記録が消えることがあります。ホーム画面に追加して使うと消えません。</p>
+    <button type="button" class="pill-btn" id="install-how" aria-expanded="false" aria-controls="install-steps">追加のしかた</button>
+    <button type="button" class="pill-btn" id="install-close">閉じる</button>
+    <div class="install-steps" id="install-steps" hidden>
+      <ol>
+        <li>Safari の共有ボタン（四角から上に矢印が出ているマーク）を押す</li>
+        <li>「ホーム画面に追加」を選ぶ（見つからないときは、下にスクロールする）</li>
+        <li>ホーム画面にできたアイコンから開く</li>
+      </ol>
+      <p id="install-move" hidden>ホーム画面のアプリは、Safari とは別の場所に記録を保存します。いまの記録を移すには、先にここでバックアップを書き出し、ホーム画面のアプリのメニュー（右上の「…」）で「バックアップを読み込む」を選んでください。</p>
+      <button type="button" class="pill-btn" id="install-export" hidden>バックアップを書き出す</button>
+      <p>Android の Chrome では、右上のメニューから「ホーム画面に追加」を選びます。</p>
+    </div>
+  </div>
   <div class="notice" id="sample-note" hidden>
     <p>いま並んでいるのはサンプルの作品です。自分の作品を登録したら、サンプルは消せます。</p>
     <button type="button" class="pill-btn" id="clear-samples-inline">サンプルを消す</button>
@@ -315,7 +330,7 @@
   <div class="sheet-body menu-body">
     <section class="menu-sec">
       <h3>記録の保存場所</h3>
-      <p>記録とプロフィールは、この端末のブラウザの中に保存されます。ホーム画面に追加して使うと消えにくくなります。機種変更やブラウザのデータ削除の前に、バックアップを書き出してください。</p>
+      <p>記録とプロフィールは、この端末のブラウザの中に保存されます。ホーム画面に追加して使うと消えにくくなります（ホーム画面のアプリは Safari とは別の場所に保存するので、Safari で付けた記録はバックアップで移してください）。機種変更やブラウザのデータ削除の前に、バックアップを書き出してください。</p>
     </section>
     <section class="menu-sec">
       <h3>バックアップ</h3>
@@ -324,6 +339,7 @@
         <label class="btn ghost" for="import-file">バックアップを読み込む</label>
         <input type="file" id="import-file" accept="application/json,.json" class="sr-only">
       </div>
+      <p class="hint backup-status" id="backup-status"></p>
       <p class="hint">バックアップにはプロフィール（名前と写真）も入ります。読み込むと、同じ作品は新しいほうの記録が残り、それ以外は追加されます。</p>
     </section>
     <section class="menu-sec" id="menu-samples" hidden>
@@ -348,7 +364,7 @@
       </div>
     </section>
     <p class="credit">作品データ：<a href="https://annict.com" target="_blank" rel="noopener">Annict</a>・画像：<a href="https://www.tvmaze.com" target="_blank" rel="noopener">TVmaze</a>（<a href="https://creativecommons.org/licenses/by-sa/4.0/deed.ja" target="_blank" rel="noopener">CC BY-SA</a>）・各作品の公式サイト<br>作品画像の著作権は、各作品の権利者に帰属します。</p>
-    <p class="version">アニメ視聴記録 v2.8.0</p>
+    <p class="version">アニメ視聴記録 v2.9.0</p>
   </div>
 </dialog>
 <!-- /shared:body -->
